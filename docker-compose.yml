@@ -1,0 +1,150 @@
+# =============================================================================
+# Docker Compose for Polymarket Arbitrage Bot
+# =============================================================================
+#
+# Usage:
+#   Dry Run:  docker-compose up
+#   Live:     docker-compose --profile live up
+#   Build:    docker-compose build
+#
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Main Bot Service - Dry Run Mode (Default)
+  # ---------------------------------------------------------------------------
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polymarket-arb:latest
+    container_name: polymarket-arb-bot
+    restart: unless-stopped
+
+    # Environment configuration
+    environment:
+      - DRY_RUN=true
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TOTAL_CAPITAL=${TOTAL_CAPITAL:-1000}
+      - MIN_PROFIT_THRESHOLD=${MIN_PROFIT_THRESHOLD:-0.005}
+      - MAX_POSITION_SIZE=${MAX_POSITION_SIZE:-100}
+      - TARGET_MARKETS=${TARGET_MARKETS:-btc_hourly,eth_hourly}
+      - MIN_LIQUIDITY=${MIN_LIQUIDITY:-500}
+      - TZ=${TZ:-UTC}
+
+    # Mount volumes
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+
+    # Resource limits for lightweight operation
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    command: ["run", "--dry-run"]
+
+  # ---------------------------------------------------------------------------
+  # Live Trading Service (Use with caution!)
+  # ---------------------------------------------------------------------------
+  bot-live:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polymarket-arb:latest
+    container_name: polymarket-arb-live
+    profiles:
+      - live
+    restart: unless-stopped
+
+    environment:
+      - DRY_RUN=false
+      - PRIVATE_KEY=${PRIVATE_KEY:?PRIVATE_KEY is required for live trading}
+      - WALLET_ADDRESS=${WALLET_ADDRESS:?WALLET_ADDRESS is required}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TOTAL_CAPITAL=${TOTAL_CAPITAL:-1000}
+      - MIN_PROFIT_THRESHOLD=${MIN_PROFIT_THRESHOLD:-0.005}
+      - MAX_POSITION_SIZE=${MAX_POSITION_SIZE:-100}
+      - TARGET_MARKETS=${TARGET_MARKETS:-btc_hourly,eth_hourly}
+      - MAX_DAILY_LOSS=${MAX_DAILY_LOSS:-0.05}
+      - TZ=${TZ:-UTC}
+
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+    command: ["run", "--live"]
+
+  # ---------------------------------------------------------------------------
+  # Test Runner Service
+  # ---------------------------------------------------------------------------
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polymarket-arb:latest
+    container_name: polymarket-arb-test
+    profiles:
+      - test
+
+    volumes:
+      - ./tests:/app/tests:ro
+
+    command: ["test"]
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  default:
+    name: polymarket-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  logs:
+    driver: local

@@ -79,7 +79,80 @@ TARGET_MARKETS=btc_hourly,eth_hourly
 MIN_LIQUIDITY=500                # Minimum $500 liquidity
 ```
 
-## Usage
+## Docker (Recommended)
+
+The bot runs in a lightweight Alpine-based Docker container (~150MB).
+
+### Quick Start with Docker
+
+```bash
+# Build the image
+make build
+# or: docker build -t polymarket-arb:latest .
+
+# Run in dry-run mode (safe, no real trades)
+make run
+# or: docker-compose up -d
+
+# View logs
+make logs
+# or: docker-compose logs -f bot
+
+# Stop
+make stop
+# or: docker-compose down
+```
+
+### Docker Commands
+
+```bash
+# Build image
+docker build -t polymarket-arb:latest .
+
+# Run dry-run (simulation)
+docker run -d --name arb-bot \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/.env:/app/.env:ro \
+  polymarket-arb:latest run --dry-run
+
+# Run live trading (CAUTION!)
+docker run -d --name arb-bot-live \
+  -e PRIVATE_KEY=your_key \
+  -e WALLET_ADDRESS=0xYourAddress \
+  -e DRY_RUN=false \
+  -v $(pwd)/logs:/app/logs \
+  polymarket-arb:latest run --live
+
+# Run tests
+docker run --rm polymarket-arb:latest test
+
+# Interactive shell
+docker run -it --rm polymarket-arb:latest sh
+```
+
+### Docker Compose
+
+```bash
+# Dry run mode (default)
+docker-compose up -d bot
+
+# Live trading mode
+docker-compose --profile live up -d bot-live
+
+# Run tests
+docker-compose --profile test run --rm test
+
+# View status
+docker-compose ps
+```
+
+### Resource Limits
+
+The container is configured with conservative resource limits:
+- **Dry Run**: 0.5 CPU, 256MB RAM
+- **Live**: 1.0 CPU, 512MB RAM
+
+## Usage (Without Docker)
 
 ### Quick Start (Dry Run)
 
@@ -112,6 +185,10 @@ python -m src.main status
 
 ```
 polymarket-arbitrage-bot/
+├── Dockerfile               # Lightweight Alpine container
+├── docker-compose.yml       # Container orchestration
+├── docker-entrypoint.sh     # Container entry script
+├── Makefile                 # Convenient commands
 ├── config/
 │   └── settings.py          # Configuration management
 ├── src/

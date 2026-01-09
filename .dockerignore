@@ -1,0 +1,99 @@
+# =============================================================================
+# Docker Ignore File - Exclude from build context
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Logs
+logs/
+*.log
+
+# Local data
+data/
+*.db
+*.sqlite
+secrets/
+trades.json
+positions.json
+performance.json
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Misc
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.temp
+
+# Keep these (explicit includes handled by COPY)
+!requirements.txt
+!config/
+!src/
+!tests/
+!docker-entrypoint.sh

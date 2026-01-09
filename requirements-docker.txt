@@ -1,0 +1,33 @@
+# =============================================================================
+# Polymarket Arbitrage Bot - Docker/Production Dependencies
+# =============================================================================
+# Slim version without development dependencies
+# Use: pip install -r requirements-docker.txt
+# =============================================================================
+
+# HTTP and API
+httpx==0.27.0
+aiohttp==3.9.3
+websockets==12.0
+
+# Web3 and Crypto
+web3==6.15.1
+eth-account==0.11.0
+
+# Async Support
+asyncio-throttle==1.0.2
+
+# Data Processing
+numpy==1.26.4
+
+# Configuration
+python-dotenv==1.0.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# Logging and Monitoring
+rich==13.7.0
+loguru==0.7.2
+
+# CLI
+typer==0.9.0
