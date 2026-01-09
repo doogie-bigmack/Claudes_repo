@@ -18,7 +18,15 @@ from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from loguru import logger
 from web3 import Web3
-from web3.middleware import geth_poa_middleware
+
+# Handle web3 v6+ middleware import change
+try:
+    from web3.middleware import ExtraDataToPOAMiddleware as geth_poa_middleware
+except ImportError:
+    try:
+        from web3.middleware import geth_poa_middleware
+    except ImportError:
+        geth_poa_middleware = None
 
 # Contract addresses on Polygon
 USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"  # USDC on Polygon
@@ -89,7 +97,8 @@ class PolygonWallet:
 
         # Create Web3 instance
         self.w3 = Web3(Web3.HTTPProvider(rpc_url))
-        self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        if geth_poa_middleware:
+            self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         # Create account from private key
         if not private_key.startswith("0x"):
