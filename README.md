@@ -298,9 +298,41 @@ pytest tests/ --cov=src --cov-report=html
 
 The bot provides real-time monitoring through:
 
-1. **Terminal Dashboard**: Live view of opportunities, trades, and metrics
-2. **Log Files**: Detailed logs in `logs/` directory
-3. **Trade Records**: Separate trade log for analysis
+1. **Web Dashboard**: Browser-based dashboard at `http://localhost:8080`
+2. **Terminal Dashboard**: Live view of opportunities, trades, and metrics
+3. **Log Files**: Detailed logs in `logs/` directory
+4. **Trade Records**: Separate trade log for analysis
+
+### Web Dashboard
+
+Start the bot with the web dashboard:
+
+```bash
+# Run with web dashboard
+python -m src.main run --dry-run --web
+
+# Specify custom port
+python -m src.main run --dry-run --web --port 3000
+
+# Or with Docker
+docker run -d -p 8080:8080 polymarket-arb:latest run --dry-run --web
+```
+
+The web dashboard shows:
+- **Total Profit/Loss**: Overall and daily P&L
+- **Win Rate**: Trade success rate with progress bar
+- **Active Markets**: Number of markets being monitored
+- **Trading Statistics**: Total trades, average profit, opportunities found, latency
+- **Risk Status**: Daily loss limit, position exposure, circuit breaker status
+- **Active Opportunities**: Real-time arbitrage opportunities with spread and estimated profit
+- **Recent Trades**: Last 10 trades with P&L
+
+API endpoints available:
+- `GET /api/status` - Bot status (running, mode, markets)
+- `GET /api/metrics` - Trading metrics (P&L, win rate, etc.)
+- `GET /api/risk` - Risk status
+- `GET /api/opportunities` - Active opportunities
+- `GET /api/trades` - Recent trades
 
 ### Metrics Tracked
 

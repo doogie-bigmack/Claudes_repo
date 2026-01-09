@@ -338,9 +338,43 @@ class MetricsCollector:
             p99_latency_ms=p99,
         )
 
-    def get_recent_trades(self, limit: int = 10) -> List[TradeMetric]:
-        """Get recent trades."""
-        return list(self._trades)[-limit:]
+    def get_recent_trades(self, limit: int = 10) -> List[dict]:
+        """Get recent trades as dictionaries for API/dashboard."""
+        trades = list(self._trades)[-limit:]
+        return [
+            {
+                "timestamp": t.timestamp.isoformat(),
+                "market": "Arbitrage Trade",
+                "size": t.size,
+                "entry_price": t.size / 2 if t.size > 0 else 0,  # Approximate
+                "pnl": t.profit,
+                "status": "success" if t.success else "failed",
+            }
+            for t in trades
+        ]
+
+    def get_summary(self) -> dict:
+        """Get metrics summary for dashboard."""
+        metrics = self.get_metrics()
+
+        # Calculate daily P&L (trades in last 24h)
+        now = datetime.now()
+        day_ago = now - timedelta(hours=24)
+        daily_pnl = sum(
+            t.profit for t in self._trades if t.timestamp > day_ago and t.success
+        )
+
+        return {
+            "total_pnl": metrics.total_profit,
+            "daily_pnl": daily_pnl,
+            "win_rate": metrics.win_rate,
+            "total_trades": metrics.total_trades,
+            "avg_profit_per_trade": metrics.avg_profit_per_trade,
+            "opportunities_detected": metrics.opportunities_detected,
+            "avg_latency_ms": metrics.avg_execution_latency_ms,
+            "sharpe_ratio": metrics.sharpe_ratio,
+            "max_drawdown": metrics.max_drawdown,
+        }
 
     def reset(self):
         """Reset all metrics."""

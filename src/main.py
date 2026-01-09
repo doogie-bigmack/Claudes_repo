@@ -37,6 +37,11 @@ from .execution.wallet import WalletManager
 from .monitoring.dashboard import Dashboard, print_status
 from .monitoring.logger import setup_logging
 from .monitoring.metrics import MetricsCollector
+from .monitoring.web_dashboard import (
+    set_dashboard_references,
+    start_dashboard_thread,
+    update_bot_status,
+)
 from .risk.risk_manager import RiskLimits, RiskManager
 
 
@@ -424,12 +429,16 @@ class ArbitrageBot:
         await self.ws_client.subscribe_markets(all_tokens)
         await self.ws_client.run_forever()
 
-    async def run(self, use_dashboard: bool = False):
+    async def run(
+        self, use_dashboard: bool = False, use_web_dashboard: bool = False, web_port: int = 8080
+    ):
         """
         Run the bot main loop.
 
         Args:
             use_dashboard: Show live terminal dashboard
+            use_web_dashboard: Start web dashboard server
+            web_port: Port for web dashboard (default 8080)
         """
         if not self._initialized:
             if not await self.initialize():
@@ -445,10 +454,28 @@ class ArbitrageBot:
 
         logger.info("Starting bot...")
 
+        # Start web dashboard if requested
+        if use_web_dashboard:
+            logger.info(f"Starting web dashboard on http://0.0.0.0:{web_port}")
+            set_dashboard_references(
+                metrics=self.metrics,
+                risk_manager=self.risk_manager,
+                detector=self.detector,
+            )
+            start_dashboard_thread(port=web_port)
+
         # Discover markets
         markets_count = await self.discover_markets()
         if markets_count == 0:
             logger.warning("No markets found - check configuration")
+
+        # Update bot status for web dashboard
+        if use_web_dashboard:
+            update_bot_status(
+                running=True,
+                mode="dry_run" if self.dry_run else "live",
+                markets=markets_count,
+            )
 
         # Create tasks
         tasks = [
@@ -518,7 +545,13 @@ def run(
         1000.0, "--capital", "-c", help="Starting capital in USDC"
     ),
     dashboard: bool = typer.Option(
-        False, "--dashboard", "-d", help="Show live dashboard"
+        False, "--dashboard", "-d", help="Show live terminal dashboard"
+    ),
+    web_dashboard: bool = typer.Option(
+        False, "--web", "-w", help="Start web dashboard on port 8080"
+    ),
+    web_port: int = typer.Option(
+        8080, "--port", "-p", help="Web dashboard port"
     ),
     log_level: str = typer.Option("INFO", "--log-level", "-l", help="Log level"),
 ):
@@ -529,6 +562,8 @@ def run(
     logger.info("Starting Polymarket Arbitrage Bot")
     logger.info(f"  Mode: {'DRY RUN' if dry_run else 'LIVE'}")
     logger.info(f"  Capital: ${capital:.2f}")
+    if web_dashboard:
+        logger.info(f"  Web Dashboard: http://localhost:{web_port}")
 
     # Load config
     config = get_config()
@@ -538,7 +573,7 @@ def run(
     # Create and run bot
     bot = ArbitrageBot(config=config, dry_run=dry_run)
 
-    asyncio.run(bot.run(use_dashboard=dashboard))
+    asyncio.run(bot.run(use_dashboard=dashboard, use_web_dashboard=web_dashboard, web_port=web_port))
 
 
 @app.command()

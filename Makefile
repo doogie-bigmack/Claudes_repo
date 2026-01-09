@@ -104,9 +104,13 @@ status:
 # Development Commands (Local, not Docker)
 # =============================================================================
 
-# Run locally
+# Run locally with terminal dashboard
 dev:
 	python -m src.main run --dry-run --dashboard
+
+# Run locally with web dashboard
+web:
+	python -m src.main run --dry-run --web
 
 # Run tests locally
 test-local:
