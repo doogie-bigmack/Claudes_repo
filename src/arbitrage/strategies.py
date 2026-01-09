@@ -11,17 +11,18 @@ import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from .detector import ArbitrageOpportunity, OpportunityStatus, MarketPair
-from .calculator import ProfitCalculator, TradeCalculation, FeeType
+from .calculator import ProfitCalculator
+from .detector import ArbitrageOpportunity
 
 
 class ExecutionMode(str, Enum):
     """How to execute trades."""
+
     SIMULTANEOUS = "simultaneous"  # Both orders at once
     SEQUENTIAL = "sequential"  # One after the other
     ATOMIC = "atomic"  # All-or-nothing (if supported)
@@ -30,6 +31,7 @@ class ExecutionMode(str, Enum):
 @dataclass
 class StrategyResult:
     """Result of strategy execution."""
+
     success: bool
     opportunity: ArbitrageOpportunity
     orders: List[Dict[str, Any]] = field(default_factory=list)
@@ -93,7 +95,6 @@ class ArbitrageStrategy(ABC):
         Returns:
             True if opportunity should be executed
         """
-        pass
 
     @abstractmethod
     async def calculate_size(
@@ -111,7 +112,6 @@ class ArbitrageStrategy(ABC):
         Returns:
             Recommended position size
         """
-        pass
 
     @abstractmethod
     async def execute(
@@ -131,7 +131,6 @@ class ArbitrageStrategy(ABC):
         Returns:
             StrategyResult with execution details
         """
-        pass
 
     async def run(
         self,
@@ -222,17 +221,17 @@ class IntraMarketArbitrage(ArbitrageStrategy):
         """Validate intra-market opportunity."""
         # Must be profitable after fees
         if not opportunity.is_profitable:
-            logger.debug(f"Opportunity not profitable after fees")
+            logger.debug("Opportunity not profitable after fees")
             return False
 
         # Check time to resolution
         pair = opportunity.market_pair
         if pair.time_to_resolution:
             if pair.time_to_resolution > self.max_time_to_resolution:
-                logger.debug(f"Market resolution too far out")
+                logger.debug("Market resolution too far out")
                 return False
             if pair.time_to_resolution < timedelta(minutes=1):
-                logger.debug(f"Market resolving too soon")
+                logger.debug("Market resolving too soon")
                 return False
 
         # Check spread meets threshold
@@ -339,7 +338,9 @@ class IntraMarketArbitrage(ArbitrageStrategy):
                             )
             else:
                 # Simulation mode
-                logger.info(f"[SIMULATION] Would buy {size} YES @ ${pair.yes_price:.3f}")
+                logger.info(
+                    f"[SIMULATION] Would buy {size} YES @ ${pair.yes_price:.3f}"
+                )
                 logger.info(f"[SIMULATION] Would buy {size} NO @ ${pair.no_price:.3f}")
 
             # Calculate actual profit
@@ -350,7 +351,9 @@ class IntraMarketArbitrage(ArbitrageStrategy):
             )
 
             execution_time = (datetime.now() - start_time).total_seconds() * 1000
-            slippage = (actual_yes_price + actual_no_price) - (pair.yes_price + pair.no_price)
+            slippage = (actual_yes_price + actual_no_price) - (
+                pair.yes_price + pair.no_price
+            )
 
             return StrategyResult(
                 success=True,
@@ -491,7 +494,7 @@ class MultiOutcomeArbitrage(ArbitrageStrategy):
     ) -> StrategyResult:
         """Execute multi-outcome arbitrage."""
         # Would need to buy all outcomes
-        logger.info(f"[MULTI-OUTCOME] Executing across all outcomes")
+        logger.info("[MULTI-OUTCOME] Executing across all outcomes")
 
         return StrategyResult(
             success=True,

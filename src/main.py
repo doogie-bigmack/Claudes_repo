@@ -17,28 +17,27 @@ Or use the CLI:
 
 import asyncio
 import signal
-import sys
-from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Optional
 
 import typer
 from loguru import logger
 
 # Local imports
-from config import get_config, BotConfig
-from .api.gamma_client import GammaClient, Market
+from config import BotConfig, get_config
+
 from .api.clob_client import CLOBClient
+from .api.gamma_client import GammaClient, Market
 from .api.websocket_client import WebSocketClient
-from .arbitrage.detector import ArbitrageDetector, ArbitrageOpportunity, MarketPair
-from .arbitrage.calculator import ProfitCalculator, FeeStructure
-from .arbitrage.strategies import StrategyManager, IntraMarketArbitrage
-from .execution.wallet import WalletManager
+from .arbitrage.calculator import FeeStructure
+from .arbitrage.detector import (ArbitrageDetector, ArbitrageOpportunity,
+                                 MarketPair)
+from .arbitrage.strategies import IntraMarketArbitrage, StrategyManager
 from .execution.order_manager import OrderManager
-from .risk.risk_manager import RiskManager, RiskLimits
+from .execution.wallet import WalletManager
+from .monitoring.dashboard import Dashboard, print_status
 from .monitoring.logger import setup_logging
 from .monitoring.metrics import MetricsCollector
-from .monitoring.dashboard import Dashboard, print_status
+from .risk.risk_manager import RiskLimits, RiskManager
 
 
 class ArbitrageBot:
@@ -170,7 +169,8 @@ class ArbitrageBot:
             # Initialize risk manager
             risk_limits = RiskLimits(
                 max_position_size=self.config.trading.max_position_size,
-                max_daily_loss=self.config.trading.total_capital * self.config.risk.max_daily_loss,
+                max_daily_loss=self.config.trading.total_capital
+                * self.config.risk.max_daily_loss,
                 max_daily_loss_pct=self.config.risk.max_daily_loss,
                 max_trades_per_hour=self.config.risk.max_trades_per_hour,
                 min_trade_interval_seconds=self.config.risk.trade_cooldown,
@@ -229,7 +229,10 @@ class ArbitrageBot:
                 logger.info(f"Found {len(markets)} {market_type} markets")
 
                 for market in markets:
-                    if market.is_binary and market.liquidity >= self.config.market_filter.min_liquidity:
+                    if (
+                        market.is_binary
+                        and market.liquidity >= self.config.market_filter.min_liquidity
+                    ):
                         # Create market pair
                         pair = self._create_market_pair(market)
                         if pair:
@@ -327,7 +330,9 @@ class ArbitrageBot:
             # Check results
             if yes_result.success and no_result.success:
                 # Calculate actual profit
-                actual_profit = opportunity.calculation.net_profit if opportunity.calculation else 0
+                actual_profit = (
+                    opportunity.calculation.net_profit if opportunity.calculation else 0
+                )
 
                 # Record in metrics
                 self.metrics.record_trade(
@@ -354,7 +359,9 @@ class ArbitrageBot:
                         pnl=actual_profit / 2,
                     )
 
-                self.detector.mark_executed(opportunity.id, latency_ms=yes_result.latency_ms)
+                self.detector.mark_executed(
+                    opportunity.id, latency_ms=yes_result.latency_ms
+                )
                 self.metrics.record_opportunity(detected=False, executed=True)
 
                 logger.info(
@@ -365,7 +372,7 @@ class ArbitrageBot:
             else:
                 self.detector.mark_failed(opportunity.id, "Execution failed")
                 self.metrics.record_trade(profit=0, size=0, success=False)
-                logger.warning(f"Opportunity execution failed")
+                logger.warning("Opportunity execution failed")
 
         except Exception as e:
             logger.error(f"Execution error: {e}")
@@ -385,12 +392,16 @@ class ArbitrageBot:
                     if pair.yes_token_id in books:
                         yes_book = books[pair.yes_token_id]
                         if yes_book.best_ask:
-                            self.detector.update_price(pair.yes_token_id, yes_book.best_ask)
+                            self.detector.update_price(
+                                pair.yes_token_id, yes_book.best_ask
+                            )
 
                     if pair.no_token_id in books:
                         no_book = books[pair.no_token_id]
                         if no_book.best_ask:
-                            self.detector.update_price(pair.no_token_id, no_book.best_ask)
+                            self.detector.update_price(
+                                pair.no_token_id, no_book.best_ask
+                            )
 
                 # Rate limit
                 await asyncio.sleep(1.0)
@@ -500,16 +511,22 @@ app = typer.Typer(
 
 @app.command()
 def run(
-    dry_run: bool = typer.Option(True, "--dry-run/--live", help="Run in simulation mode"),
-    capital: float = typer.Option(1000.0, "--capital", "-c", help="Starting capital in USDC"),
-    dashboard: bool = typer.Option(False, "--dashboard", "-d", help="Show live dashboard"),
+    dry_run: bool = typer.Option(
+        True, "--dry-run/--live", help="Run in simulation mode"
+    ),
+    capital: float = typer.Option(
+        1000.0, "--capital", "-c", help="Starting capital in USDC"
+    ),
+    dashboard: bool = typer.Option(
+        False, "--dashboard", "-d", help="Show live dashboard"
+    ),
     log_level: str = typer.Option("INFO", "--log-level", "-l", help="Log level"),
 ):
     """Run the arbitrage bot."""
     # Set up basic logging first
     setup_logging(level=log_level)
 
-    logger.info(f"Starting Polymarket Arbitrage Bot")
+    logger.info("Starting Polymarket Arbitrage Bot")
     logger.info(f"  Mode: {'DRY RUN' if dry_run else 'LIVE'}")
     logger.info(f"  Capital: ${capital:.2f}")
 
@@ -536,6 +553,7 @@ def status():
 @app.command()
 def test_connection():
     """Test API connectivity."""
+
     async def _test():
         logger.info("Testing Polymarket API connectivity...")
 

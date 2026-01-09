@@ -9,7 +9,6 @@ Uses loguru for enhanced logging with:
 """
 
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 

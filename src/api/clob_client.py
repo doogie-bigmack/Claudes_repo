@@ -15,11 +15,11 @@ import hashlib
 import hmac
 import json
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
 
 import httpx
 from eth_account import Account
@@ -29,19 +29,22 @@ from loguru import logger
 
 class OrderSide(str, Enum):
     """Order side enumeration."""
+
     BUY = "BUY"
     SELL = "SELL"
 
 
 class OrderType(str, Enum):
     """Order type enumeration."""
+
     LIMIT = "GTC"  # Good-til-canceled
-    FOK = "FOK"    # Fill-or-kill
-    IOC = "IOC"    # Immediate-or-cancel
+    FOK = "FOK"  # Fill-or-kill
+    IOC = "IOC"  # Immediate-or-cancel
 
 
 class OrderStatus(str, Enum):
     """Order status enumeration."""
+
     LIVE = "LIVE"
     MATCHED = "MATCHED"
     CANCELLED = "CANCELLED"
@@ -51,6 +54,7 @@ class OrderStatus(str, Enum):
 @dataclass
 class OrderBookLevel:
     """Single level in order book."""
+
     price: float
     size: float
 
@@ -66,6 +70,7 @@ class OrderBookLevel:
 @dataclass
 class OrderBook:
     """Order book for a token."""
+
     token_id: str
     bids: List[OrderBookLevel] = field(default_factory=list)
     asks: List[OrderBookLevel] = field(default_factory=list)
@@ -99,6 +104,7 @@ class OrderBook:
 @dataclass
 class Order:
     """Represents an order."""
+
     order_id: str
     token_id: str
     side: OrderSide
@@ -121,6 +127,7 @@ class Order:
 @dataclass
 class Trade:
     """Represents a completed trade."""
+
     trade_id: str
     token_id: str
     side: OrderSide
@@ -133,6 +140,7 @@ class Trade:
 @dataclass
 class Position:
     """Represents a position in a token."""
+
     token_id: str
     size: float
     average_price: float
@@ -278,11 +286,13 @@ class CLOBClient:
 
         if self._api_key:
             timestamp = str(int(time.time() * 1000))
-            headers.update({
-                "POLY_API_KEY": self._api_key,
-                "POLY_TIMESTAMP": timestamp,
-                "POLY_PASSPHRASE": self._api_passphrase or "",
-            })
+            headers.update(
+                {
+                    "POLY_API_KEY": self._api_key,
+                    "POLY_TIMESTAMP": timestamp,
+                    "POLY_PASSPHRASE": self._api_passphrase or "",
+                }
+            )
 
             # Generate signature if we have a secret
             if self._api_secret:
@@ -305,9 +315,13 @@ class CLOBClient:
         authenticated: bool = False,
     ) -> Dict[str, Any]:
         """Make an API request."""
-        headers = self._get_auth_headers() if authenticated else {
-            "Accept": "application/json",
-        }
+        headers = (
+            self._get_auth_headers()
+            if authenticated
+            else {
+                "Accept": "application/json",
+            }
+        )
 
         try:
             response = await self.client.request(
@@ -346,7 +360,7 @@ class CLOBClient:
         """
         data = await self._request(
             "GET",
-            f"/book",
+            "/book",
             params={"token_id": token_id},
         )
 
@@ -444,6 +458,7 @@ class CLOBClient:
         Returns:
             Dictionary mapping token_id to (bid, ask) tuple
         """
+
         async def get_both(token_id: str):
             bid = await self.get_price(token_id, OrderSide.BUY)
             ask = await self.get_price(token_id, OrderSide.SELL)
@@ -637,6 +652,8 @@ async def main():
         token_id = "example_token_id"
 
         logger.info(f"Testing order book fetch for {token_id}...")
+        # Placeholder - would call client methods with real token ID
+        _ = client  # Acknowledge client usage
         # This would fail without a real token ID
         # book = await client.get_order_book(token_id)
 

@@ -9,19 +9,18 @@ Implements various risk controls:
 - Circuit breakers
 """
 
-import asyncio
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
-from collections import deque
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
 
 class RiskLevel(str, Enum):
     """Risk level classification."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -30,6 +29,7 @@ class RiskLevel(str, Enum):
 
 class RiskCheckResult(str, Enum):
     """Result of a risk check."""
+
     PASSED = "passed"
     WARNING = "warning"
     BLOCKED = "blocked"
@@ -38,6 +38,7 @@ class RiskCheckResult(str, Enum):
 @dataclass
 class RiskLimits:
     """Risk limit configuration."""
+
     # Position limits
     max_position_size: float = 100.0  # Max per trade
     max_total_exposure: float = 1000.0  # Total across all positions
@@ -65,6 +66,7 @@ class RiskLimits:
 @dataclass
 class RiskCheck:
     """Result of a risk check."""
+
     name: str
     result: RiskCheckResult
     level: RiskLevel
@@ -84,6 +86,7 @@ class RiskCheck:
 @dataclass
 class TradeRecord:
     """Record of a completed trade."""
+
     timestamp: datetime
     token_id: str
     side: str
@@ -96,6 +99,7 @@ class TradeRecord:
 @dataclass
 class RiskState:
     """Current risk state."""
+
     # Capital tracking
     starting_capital: float = 0.0
     current_capital: float = 0.0
@@ -204,9 +208,7 @@ class RiskManager:
         self.state.trades_this_minute = sum(
             1 for t in self._trade_times if t > minute_ago
         )
-        self.state.trades_this_hour = sum(
-            1 for t in self._trade_times if t > hour_ago
-        )
+        self.state.trades_this_hour = sum(1 for t in self._trade_times if t > hour_ago)
 
     def check_trade(
         self,
@@ -229,8 +231,6 @@ class RiskManager:
         """
         self._reset_daily_counters()
         self._update_rate_counters()
-
-        checks = []
 
         # Check 1: Trading halted
         if self.state.is_halted:
@@ -258,7 +258,10 @@ class RiskManager:
                 result=RiskCheckResult.BLOCKED,
                 level=RiskLevel.HIGH,
                 message=f"Insufficient capital: need ${expected_cost:.2f}, have ${self.available_capital:.2f}",
-                details={"required": expected_cost, "available": self.available_capital},
+                details={
+                    "required": expected_cost,
+                    "available": self.available_capital,
+                },
             )
 
         # Check 4: Total exposure limit
@@ -273,7 +276,9 @@ class RiskManager:
 
         # Check 5: Market exposure limit
         if market_id:
-            market_exposure = self.state.market_exposures.get(market_id, 0) + expected_cost
+            market_exposure = (
+                self.state.market_exposures.get(market_id, 0) + expected_cost
+            )
             if market_exposure > self.limits.max_single_market_exposure:
                 return RiskCheck(
                     name="market_exposure",

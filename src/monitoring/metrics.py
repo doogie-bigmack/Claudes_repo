@@ -8,13 +8,12 @@ Collects and exposes metrics for:
 - Opportunity detection
 """
 
-import asyncio
+import statistics
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
-from collections import deque
-import statistics
+from typing import List, Optional
 
 from loguru import logger
 
@@ -22,6 +21,7 @@ from loguru import logger
 @dataclass
 class LatencyMetric:
     """Latency measurement."""
+
     name: str
     value_ms: float
     timestamp: datetime = field(default_factory=datetime.now)
@@ -30,6 +30,7 @@ class LatencyMetric:
 @dataclass
 class TradeMetric:
     """Trade execution metric."""
+
     timestamp: datetime
     size: float
     profit: float
@@ -40,6 +41,7 @@ class TradeMetric:
 @dataclass
 class BotMetrics:
     """Aggregated bot metrics."""
+
     # Timing
     uptime_seconds: float = 0.0
     start_time: Optional[datetime] = None
@@ -94,7 +96,8 @@ class BotMetrics:
                 "missed": self.opportunities_missed,
                 "execution_rate": (
                     f"{self.opportunities_executed / self.opportunities_detected:.1%}"
-                    if self.opportunities_detected > 0 else "N/A"
+                    if self.opportunities_detected > 0
+                    else "N/A"
                 ),
             },
             "latency": {
@@ -192,7 +195,8 @@ class MetricsCollector:
 
     def record_latency(self, name: str, latency_ms: float):
         """Record a latency measurement."""
-        metric = LatencyMetric(name=name, value_ms=latency_ms)
+        # Create metric for potential future use (e.g., detailed logging)
+        _ = LatencyMetric(name=name, value_ms=latency_ms)
 
         if "api" in name.lower():
             self._api_latencies.append(latency_ms)
@@ -291,26 +295,26 @@ class MetricsCollector:
     def get_metrics(self) -> BotMetrics:
         """Get current aggregated metrics."""
         # Calculate latency stats
-        avg_api = (
-            statistics.mean(self._api_latencies)
-            if self._api_latencies else 0.0
-        )
+        avg_api = statistics.mean(self._api_latencies) if self._api_latencies else 0.0
         avg_exec = (
             statistics.mean(self._execution_latencies)
-            if self._execution_latencies else 0.0
+            if self._execution_latencies
+            else 0.0
         )
         p99 = self._calculate_percentile(self._execution_latencies, 99)
 
         # Calculate win rate
         win_rate = (
             self._successful_trades / self._total_trades
-            if self._total_trades > 0 else 0.0
+            if self._total_trades > 0
+            else 0.0
         )
 
         # Calculate avg profit
         avg_profit = (
             self._total_profit / self._successful_trades
-            if self._successful_trades > 0 else 0.0
+            if self._successful_trades > 0
+            else 0.0
         )
 
         return BotMetrics(

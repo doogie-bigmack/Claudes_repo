@@ -11,24 +11,26 @@ Endpoint: wss://ws-subscriptions-clob.polymarket.com/ws
 
 import asyncio
 import json
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
-from dataclasses import dataclass, field
 
 import websockets
-from websockets.client import WebSocketClientProtocol
 from loguru import logger
+from websockets.client import WebSocketClientProtocol
 
 
 class ChannelType(str, Enum):
     """WebSocket channel types."""
+
     MARKET = "market"
     USER = "user"
 
 
 class MessageType(str, Enum):
     """WebSocket message types."""
+
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
     BOOK = "book"
@@ -40,6 +42,7 @@ class MessageType(str, Enum):
 @dataclass
 class PriceUpdate:
     """Price update from WebSocket."""
+
     token_id: str
     price: float
     side: str
@@ -49,6 +52,7 @@ class PriceUpdate:
 @dataclass
 class BookUpdate:
     """Order book update from WebSocket."""
+
     token_id: str
     bids: List[Dict[str, float]] = field(default_factory=list)
     asks: List[Dict[str, float]] = field(default_factory=list)
@@ -58,6 +62,7 @@ class BookUpdate:
 @dataclass
 class TradeUpdate:
     """Trade notification from WebSocket."""
+
     token_id: str
     price: float
     size: float

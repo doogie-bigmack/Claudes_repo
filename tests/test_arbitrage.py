@@ -2,27 +2,15 @@
 Tests for arbitrage detection and calculation.
 """
 
-import pytest
-from decimal import Decimal
 from datetime import datetime, timedelta
 
+import pytest
+
 # Import modules to test
-from src.arbitrage.calculator import (
-    ProfitCalculator,
-    FeeStructure,
-    FeeType,
-    TradeCalculation,
-)
-from src.arbitrage.detector import (
-    ArbitrageDetector,
-    ArbitrageOpportunity,
-    MarketPair,
-    OpportunityType,
-)
-from src.arbitrage.strategies import (
-    IntraMarketArbitrage,
-    StrategyManager,
-)
+from src.arbitrage.calculator import ProfitCalculator
+from src.arbitrage.detector import (ArbitrageDetector, ArbitrageOpportunity,
+                                    MarketPair, OpportunityType)
+from src.arbitrage.strategies import IntraMarketArbitrage, StrategyManager
 
 
 class TestProfitCalculator:

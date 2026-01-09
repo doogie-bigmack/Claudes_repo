@@ -12,16 +12,17 @@ Uses real-time WebSocket feeds for low-latency detection.
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Callable, Any
 from enum import Enum
+from typing import Callable, Dict, List, Optional, Set
 
 from loguru import logger
 
-from .calculator import ProfitCalculator, TradeCalculation, FeeStructure
+from .calculator import FeeStructure, ProfitCalculator, TradeCalculation
 
 
 class OpportunityType(str, Enum):
     """Type of arbitrage opportunity."""
+
     INTRA_MARKET = "intra_market"  # YES + NO < $1 same market
     CROSS_PLATFORM = "cross_platform"  # Polymarket vs Kalshi
     MULTI_OUTCOME = "multi_outcome"  # Sum of outcomes < $1
@@ -29,6 +30,7 @@ class OpportunityType(str, Enum):
 
 class OpportunityStatus(str, Enum):
     """Status of an opportunity."""
+
     DETECTED = "detected"
     VALIDATED = "validated"
     EXECUTING = "executing"
@@ -40,6 +42,7 @@ class OpportunityStatus(str, Enum):
 @dataclass
 class MarketPair:
     """Represents a YES/NO market pair."""
+
     market_id: str
     question: str
     yes_token_id: str
@@ -77,6 +80,7 @@ class MarketPair:
 @dataclass
 class ArbitrageOpportunity:
     """Represents a detected arbitrage opportunity."""
+
     id: str
     type: OpportunityType
     market_pair: MarketPair
@@ -509,9 +513,7 @@ def main():
     )
 
     # Register callback
-    detector.on_opportunity(
-        lambda opp: print(f"OPPORTUNITY: {opp.to_dict()}")
-    )
+    detector.on_opportunity(lambda opp: print(f"OPPORTUNITY: {opp.to_dict()}"))
 
     # Add a test market
     pair = MarketPair(

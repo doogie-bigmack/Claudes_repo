@@ -8,16 +8,14 @@ Handles all financial calculations including:
 - Risk-adjusted returns
 """
 
-from dataclasses import dataclass, field
-from decimal import Decimal, ROUND_DOWN
-from typing import Optional, Tuple
+from dataclasses import dataclass
 from enum import Enum
-
-from loguru import logger
+from typing import Optional, Tuple
 
 
 class FeeType(str, Enum):
     """Order fee type."""
+
     TAKER = "taker"
     MAKER = "maker"
 
@@ -25,6 +23,7 @@ class FeeType(str, Enum):
 @dataclass
 class FeeStructure:
     """Fee structure for calculations."""
+
     taker_fee: float = 0.0315  # 3.15% taker fee (dynamic, can be lower)
     maker_rebate: float = 0.005  # 0.5% maker rebate
     gas_cost_usdc: float = 0.01  # Approximate gas in USDC equivalent
@@ -39,6 +38,7 @@ class FeeStructure:
 @dataclass
 class TradeCalculation:
     """Result of a trade profit calculation."""
+
     # Input values
     yes_price: float
     no_price: float
@@ -182,23 +182,17 @@ class ProfitCalculator:
 
         # Net profit
         result.net_profit = (
-            result.gross_profit_total
-            - result.total_fees
-            - result.gas_cost
+            result.gross_profit_total - result.total_fees - result.gas_cost
         )
 
         # Percentage profit
         if result.total_investment > 0:
-            result.net_profit_percentage = (
-                result.net_profit / result.total_investment
-            )
+            result.net_profit_percentage = result.net_profit / result.total_investment
             result.roi = result.net_profit_percentage
 
         # Risk metrics
         result.max_loss = result.total_fees + result.gas_cost
-        result.breakeven_combined = 1.0 - (
-            (result.total_fees + result.gas_cost) / size
-        )
+        result.breakeven_combined = 1.0 - ((result.total_fees + result.gas_cost) / size)
 
         return result
 
@@ -371,15 +365,11 @@ class CrossPlatformCalculator(ProfitCalculator):
 
         result.total_investment = (poly_yes_price + kalshi_no_price) * size
         result.net_profit = (
-            result.gross_profit_total
-            - result.total_fees
-            - result.gas_cost
+            result.gross_profit_total - result.total_fees - result.gas_cost
         )
 
         if result.total_investment > 0:
-            result.net_profit_percentage = (
-                result.net_profit / result.total_investment
-            )
+            result.net_profit_percentage = result.net_profit / result.total_investment
             result.roi = result.net_profit_percentage
 
         return result
@@ -395,7 +385,7 @@ def main():
 
     result = calc.calculate(yes_price, no_price, size=100)
 
-    print(f"=== Arbitrage Calculation ===")
+    print("=== Arbitrage Calculation ===")
     print(f"YES price: ${yes_price:.2f}")
     print(f"NO price: ${no_price:.2f}")
     print(f"Combined: ${result.combined_price:.2f}")

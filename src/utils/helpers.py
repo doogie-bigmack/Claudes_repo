@@ -10,7 +10,6 @@ from typing import Any, Callable, Optional, TypeVar
 
 from loguru import logger
 
-
 T = TypeVar("T")
 
 
@@ -24,7 +23,9 @@ def format_percentage(value: float, decimals: int = 2) -> str:
     return f"{value * 100:.{decimals}f}%"
 
 
-def format_timestamp(dt: Optional[datetime] = None, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+def format_timestamp(
+    dt: Optional[datetime] = None, fmt: str = "%Y-%m-%d %H:%M:%S"
+) -> str:
     """Format datetime as string."""
     if dt is None:
         dt = datetime.now()
@@ -51,6 +52,7 @@ def retry_async(
         async def fetch_data():
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
@@ -77,6 +79,7 @@ def retry_async(
             raise last_exception
 
         return wrapper
+
     return decorator
 
 
@@ -147,7 +150,9 @@ def rate_limit(rate: int, per: float = 1.0):
         async def wrapper(*args, **kwargs) -> Any:
             async with limiter:
                 return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -178,7 +183,7 @@ class Timer:
 
 def chunk_list(lst: list, chunk_size: int) -> list:
     """Split a list into chunks."""
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+    return [lst[i : i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
 def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:

@@ -1,13 +1,9 @@
 """Arbitrage detection and strategy modules."""
 
-from .detector import ArbitrageDetector, ArbitrageOpportunity
 from .calculator import ProfitCalculator, TradeCalculation
-from .strategies import (
-    ArbitrageStrategy,
-    IntraMarketArbitrage,
-    CrossPlatformArbitrage,
-    MultiOutcomeArbitrage,
-)
+from .detector import ArbitrageDetector, ArbitrageOpportunity
+from .strategies import (ArbitrageStrategy, CrossPlatformArbitrage,
+                         IntraMarketArbitrage, MultiOutcomeArbitrage)
 
 __all__ = [
     "ArbitrageDetector",

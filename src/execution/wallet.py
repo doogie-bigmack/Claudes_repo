@@ -16,10 +16,9 @@ from typing import Any, Dict, Optional
 
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
+from loguru import logger
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
-from loguru import logger
-
 
 # Contract addresses on Polygon
 USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"  # USDC on Polygon
@@ -29,6 +28,7 @@ POLYMARKET_EXCHANGE = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"  # CTF Exchan
 @dataclass
 class WalletBalance:
     """Wallet balance information."""
+
     matic: Decimal
     usdc: Decimal
     timestamp: datetime
@@ -47,6 +47,7 @@ class WalletBalance:
 @dataclass
 class TransactionResult:
     """Result of a blockchain transaction."""
+
     success: bool
     tx_hash: Optional[str] = None
     gas_used: int = 0
@@ -221,13 +222,15 @@ class PolygonWallet:
             tx = self._usdc_contract.functions.approve(
                 Web3.to_checksum_address(spender),
                 amount_raw,
-            ).build_transaction({
-                "from": self.address,
-                "nonce": nonce,
-                "gas": 100000,
-                "gasPrice": gas_price,
-                "chainId": self.chain_id,
-            })
+            ).build_transaction(
+                {
+                    "from": self.address,
+                    "nonce": nonce,
+                    "gas": 100000,
+                    "gasPrice": gas_price,
+                    "chainId": self.chain_id,
+                }
+            )
 
             # Sign and send
             signed_tx = self._account.sign_transaction(tx)

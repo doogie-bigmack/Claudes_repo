@@ -11,10 +11,10 @@ Endpoint: https://gamma-api.polymarket.com
 """
 
 import asyncio
-from datetime import datetime
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 import httpx
 from loguru import logger
@@ -22,6 +22,7 @@ from loguru import logger
 
 class MarketStatus(str, Enum):
     """Market status enumeration."""
+
     ACTIVE = "active"
     CLOSED = "closed"
     RESOLVED = "resolved"
@@ -31,6 +32,7 @@ class MarketStatus(str, Enum):
 @dataclass
 class MarketOutcome:
     """Represents a market outcome (YES/NO side)."""
+
     token_id: str
     outcome: str  # "Yes" or "No"
     price: float
@@ -45,6 +47,7 @@ class MarketOutcome:
 @dataclass
 class Market:
     """Represents a Polymarket market."""
+
     condition_id: str
     question_id: str
     question: str
@@ -190,15 +193,12 @@ class GammaClient:
         end_date_str = data.get("end_date_iso") or data.get("end_date")
         if end_date_str:
             try:
-                end_date = datetime.fromisoformat(
-                    end_date_str.replace("Z", "+00:00")
-                )
+                end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
             except (ValueError, TypeError):
                 pass
 
         # Determine status
         status = MarketStatus.UNKNOWN
-        status_str = data.get("active", data.get("closed", ""))
         if data.get("active") is True:
             status = MarketStatus.ACTIVE
         elif data.get("closed") is True:
@@ -369,9 +369,9 @@ class GammaClient:
         query_lower = query.lower()
 
         return [
-            m for m in all_markets
-            if query_lower in m.question.lower()
-            or query_lower in m.description.lower()
+            m
+            for m in all_markets
+            if query_lower in m.question.lower() or query_lower in m.description.lower()
         ]
 
 

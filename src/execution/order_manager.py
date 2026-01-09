@@ -10,21 +10,21 @@ Handles:
 
 import asyncio
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from decimal import Decimal
-from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Callable
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Callable, Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from ..api.clob_client import CLOBClient, OrderSide, OrderType, Order, OrderStatus
+from ..api.clob_client import CLOBClient, OrderSide, OrderType
 from .wallet import WalletManager
 
 
 class ExecutionStatus(str, Enum):
     """Order execution status."""
+
     PENDING = "pending"
     SUBMITTED = "submitted"
     PARTIAL = "partial"
@@ -37,6 +37,7 @@ class ExecutionStatus(str, Enum):
 @dataclass
 class ExecutionOrder:
     """Internal order tracking."""
+
     id: str
     token_id: str
     side: OrderSide
@@ -94,6 +95,7 @@ class ExecutionOrder:
 @dataclass
 class ExecutionResult:
     """Result of an order execution."""
+
     success: bool
     order: ExecutionOrder
     latency_ms: float = 0.0
@@ -108,6 +110,7 @@ class ExecutionResult:
 @dataclass
 class Position:
     """Trading position in a token."""
+
     token_id: str
     size: float
     average_price: float
@@ -330,7 +333,8 @@ class OrderManager:
             "failed": self._failed_orders,
             "success_rate": (
                 f"{self._successful_orders / self._total_orders:.1%}"
-                if self._total_orders > 0 else "N/A"
+                if self._total_orders > 0
+                else "N/A"
             ),
             "volume": f"${self._total_volume:.2f}",
         }
@@ -487,9 +491,9 @@ class OrderManager:
             new_size = pos.size + order.filled_size
             if new_size > 0:
                 pos.average_price = (
-                    (pos.size * pos.average_price + order.filled_size * order.average_fill_price)
-                    / new_size
-                )
+                    pos.size * pos.average_price
+                    + order.filled_size * order.average_fill_price
+                ) / new_size
             pos.size = new_size
         else:
             # Reduce position

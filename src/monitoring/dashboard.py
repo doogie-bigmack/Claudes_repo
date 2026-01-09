@@ -10,20 +10,19 @@ Provides a live view of:
 
 import asyncio
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional
 
+from rich import box
 from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
 from rich.layout import Layout
 from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
-from rich import box
-from loguru import logger
 
-from .metrics import MetricsCollector, BotMetrics
-from ..risk.risk_manager import RiskManager, RiskLevel
-from ..arbitrage.detector import ArbitrageDetector, ArbitrageOpportunity
+from ..arbitrage.detector import ArbitrageDetector
+from ..risk.risk_manager import RiskManager
+from .metrics import MetricsCollector
 
 
 class Dashboard:
@@ -59,8 +58,7 @@ class Dashboard:
         """Create dashboard header."""
         title = Text("Polymarket Arbitrage Bot", style="bold magenta")
         subtitle = Text(
-            f" | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            style="dim"
+            f" | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", style="dim"
         )
         title.append(subtitle)
 
@@ -96,8 +94,9 @@ class Dashboard:
             table.add_row("─" * 15, "─" * 10)
             table.add_row("Opportunities", str(m.opportunities_detected))
             table.add_row("Executed", str(m.opportunities_executed))
-            table.add_row("Execution Rate",
-                f"{m.opportunities_executed / max(1, m.opportunities_detected):.1%}"
+            table.add_row(
+                "Execution Rate",
+                f"{m.opportunities_executed / max(1, m.opportunities_detected):.1%}",
             )
             table.add_row("─" * 15, "─" * 10)
             table.add_row("Avg Latency", f"{m.avg_execution_latency_ms:.0f}ms")
@@ -151,7 +150,9 @@ class Dashboard:
             table.add_row("Open Positions", str(status["exposure"]["positions"]))
             table.add_row("─" * 15, "─" * 10)
             table.add_row("Trades Today", str(status["activity"]["trades_today"]))
-            table.add_row("Consecutive Losses", str(status["activity"]["consecutive_losses"]))
+            table.add_row(
+                "Consecutive Losses", str(status["activity"]["consecutive_losses"])
+            )
         else:
             table.add_row("No risk manager", "N/A")
 
@@ -272,9 +273,7 @@ class Dashboard:
 
         # Footer with controls
         footer_text = Text(
-            "Press Ctrl+C to stop | "
-            "Q to quit | "
-            "R to reset metrics",
+            "Press Ctrl+C to stop | " "Q to quit | " "R to reset metrics",
             style="dim",
         )
         layout["footer"].update(Panel(footer_text, box=box.SIMPLE))
