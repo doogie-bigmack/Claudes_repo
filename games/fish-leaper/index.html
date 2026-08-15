@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Fish Leaper</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #04213f;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+    touch-action: none; user-select: none;
+  }
+  #wrap { display: flex; flex-direction: column; height: 100dvh; align-items: center; }
+  #game {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    object-fit: contain; display: block; image-rendering: auto;
+  }
+  #pad {
+    flex: 0 0 auto; display: grid; gap: 6px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    grid-template-columns: repeat(3, 74px); grid-template-rows: repeat(2, 56px);
+    justify-content: center;
+  }
+  .btn {
+    border: none; border-radius: 16px; font-size: 26px; font-weight: 700; color: #06304f;
+    background: linear-gradient(#bff0ff, #62c8f0); box-shadow: 0 4px 0 #2b90bb; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; touch-action: manipulation;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #2b90bb; }
+  #up    { grid-column: 2; grid-row: 1; background: linear-gradient(#ffe27a, #ffb62e); box-shadow: 0 4px 0 #d2860a; }
+  #left  { grid-column: 1; grid-row: 2; }
+  #down  { grid-column: 2; grid-row: 2; }
+  #right { grid-column: 3; grid-row: 2; }
+  #mute {
+    position: fixed; top: 8px; right: 10px; width: 44px; height: 44px; border-radius: 50%;
+    border: none; font-size: 20px; background: rgba(255,255,255,.22); color: #fff; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+  <div id="pad">
+    <button class="btn" id="up"    aria-label="Swim up">▲</button>
+    <button class="btn" id="left"  aria-label="Swim left">◀</button>
+    <button class="btn" id="down"  aria-label="Swim down">▼</button>
+    <button class="btn" id="right" aria-label="Swim right">▶</button>
+  </div>
+</div>
+<button id="mute" aria-label="Sound on or off">🔊</button>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * Fish Leaper - a Frogger-style ocean hopping game for young players. *
+ * Everything is drawn with canvas shapes: no images, no libraries.    *
+ * ------------------------------------------------------------------ */
+
+const TILE = 60;
+const COLS = 14;
+const ROWS = 12;
+const HUD_H = 56;
+const W = COLS * TILE;          // 840
+const H = ROWS * TILE + HUD_H;  // 776
+
+const ROW_HOME  = 0;
+const ROW_KELP  = 6;   // safe resting row in the middle
+const ROW_START = 11;  // sandy sea floor where the fish starts
+
+const HOME_COUNT = 5;
+const START_LIVES = 5;
+const HOP_TIME = 0.16;      // seconds per leap
+const SAFE_TIME = 1.6;      // invincible seconds after respawning
+const MAX_SPEED_MUL = 1.75;
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function fitCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+fitCanvas();
+window.addEventListener("resize", fitCanvas);
+
+/* ----------------------------- helpers ---------------------------- */
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const mod = (a, n) => ((a % n) + n) % n;
+const rowY = (r) => HUD_H + r * TILE;      // top edge of a row
+const rowMid = (r) => rowY(r) + TILE / 2;
+const colMid = (c) => c * TILE + TILE / 2;
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function circleHitsRect(cx, cy, cr, rx, ry, rw, rh) {
+  const nx = clamp(cx, rx, rx + rw);
+  const ny = clamp(cy, ry, ry + rh);
+  const dx = cx - nx, dy = cy - ny;
+  return dx * dx + dy * dy <= cr * cr;
+}
+
+/* ------------------------------ sound ----------------------------- */
+
+const Sound = {
+  ctx: null,
+  on: true,
+  init() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) this.ctx = new AC();
+    }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+  },
+  tone(freq, dur, when = 0, type = "sine", vol = 0.18, slideTo = null) {
+    if (!this.on || !this.ctx) return;
+    const t0 = this.ctx.currentTime + when;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain).connect(this.ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.05);
+  },
+  hop()   { this.tone(420, 0.12, 0, "sine", 0.14, 760); },
+  bump()  { this.tone(240, 0.16, 0, "triangle", 0.12, 180); },
+  oops()  { this.tone(400, 0.3, 0, "sawtooth", 0.13, 90); this.tone(180, 0.4, 0.06, "sine", 0.1, 70); },
+  chomp() { this.tone(120, 0.18, 0, "square", 0.13, 60); this.tone(90, 0.22, 0.12, "square", 0.11, 50); },
+  home()  { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.16, i * 0.07, "triangle", 0.16)); },
+  level() { [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.24, i * 0.1, "square", 0.12)); },
+  over()  { [440, 392, 330, 262].forEach((f, i) => this.tone(f, 0.3, i * 0.16, "sine", 0.14)); },
+};
+
+const muteBtn = document.getElementById("mute");
+muteBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  Sound.on = !Sound.on;
+  muteBtn.textContent = Sound.on ? "🔊" : "🔇";
+});
+
+/* ------------------------------ lanes ----------------------------- */
+/* Each hazard row is a lane of look-alike critters drifting sideways. */
+
+const LANE_PLAN = [
+  { row: 1,  type: "jelly",  dir: -1, speed:  58, gap: 200, w: 46, h: 52 },
+  { row: 2,  type: "shark",  dir:  1, speed: 128, gap: 540, w: 132, h: 54 },
+  { row: 3,  type: "urchin", dir: -1, speed:  72, gap: 190, w: 44, h: 44 },
+  { row: 4,  type: "jelly",  dir:  1, speed:  66, gap: 215, w: 46, h: 52 },
+  { row: 5,  type: "shark",  dir: -1, speed: 108, gap: 580, w: 132, h: 54 },
+  { row: 7,  type: "crab",   dir:  1, speed:  62, gap: 205, w: 54, h: 42 },
+  { row: 8,  type: "net",    dir: -1, speed:  84, gap: 265, w: 72, h: 48 },
+  { row: 9,  type: "crab",   dir: -1, speed:  70, gap: 200, w: 54, h: 42 },
+  { row: 10, type: "net",    dir:  1, speed:  52, gap: 245, w: 72, h: 48 },
+];
+
+function buildLanes() {
+  return LANE_PLAN.map((p) => {
+    const count = Math.ceil((W + p.w + 120) / p.gap);
+    return {
+      ...p,
+      count,
+      len: count * p.gap,
+      scroll: rand(0, count * p.gap),
+    };
+  });
+}
+
+function laneItemX(lane, i) {
+  return mod(i * lane.gap + lane.scroll, lane.len) - (lane.w + 60);
+}
+
+/* ------------------------------ state ----------------------------- */
+
+let lanes = buildLanes();
+let bubbles = [];
+let particles = [];
+let popups = [];
+
+const game = {
+  mode: "title",      // title | play | dead | levelup | over
+  score: 0,
+  best: Number(localStorage.getItem("fishLeaperBest") || 0),
+  lives: START_LIVES,
+  level: 1,
+  speedMul: 1,
+  homes: new Array(HOME_COUNT).fill(false),
+  timer: 0,           // countdown used by dead / levelup states
+  safeFor: 0,         // invincibility countdown
+  bestRow: ROW_START, // furthest row reached this trip (for bonus points)
+  shake: 0,
+  time: 0,
+};
+
+const player = {
+  col: Math.floor(COLS / 2),
+  row: ROW_START,
+  x: colMid(Math.floor(COLS / 2)),
+  y: rowMid(ROW_START),
+  fromX: 0, fromY: 0, toX: 0, toY: 0,
+  t: 1,               // hop progress 0..1 (1 = resting)
+  facing: "up",
+  buffered: null,
+  hurt: 0,
+};
+
+function resetPlayer() {
+  player.col = Math.floor(COLS / 2);
+  player.row = ROW_START;
+  player.x = player.toX = player.fromX = colMid(player.col);
+  player.y = player.toY = player.fromY = rowMid(player.row);
+  player.t = 1;
+  player.facing = "up";
+  player.buffered = null;
+  game.bestRow = ROW_START;
+}
+
+function startGame() {
+  game.mode = "play";
+  game.score = 0;
+  game.lives = START_LIVES;
+  game.level = 1;
+  game.speedMul = 1;
+  game.homes.fill(false);
+  game.safeFor = SAFE_TIME;
+  lanes = buildLanes();
+  particles = [];
+  popups = [];
+  resetPlayer();
+}
+
+function nextLevel() {
+  game.level += 1;
+  game.speedMul = Math.min(MAX_SPEED_MUL, 1 + (game.level - 1) * 0.1);
+  game.homes.fill(false);
+  game.lives = Math.min(START_LIVES + 2, game.lives + 1); // a little reward
+  game.safeFor = SAFE_TIME;
+  resetPlayer();
+  game.mode = "play";
+}
+
+/* ------------------------------ input ----------------------------- */
+
+function tryMove(dx, dy) {
+  if (game.mode === "title" || game.mode === "over") { Sound.init(); startGame(); return; }
+  if (game.mode !== "play") return;
+
+  if (player.t < 1) {                    // still mid-leap: remember one move
+    player.buffered = [dx, dy];
+    return;
+  }
+
+  const nCol = clamp(player.col + dx, 0, COLS - 1);
+  const nRow = clamp(player.row + dy, ROW_HOME, ROW_START);
+  if (nCol === player.col && nRow === player.row) { Sound.bump(); return; }
+
+  player.facing = dy < 0 ? "up" : dy > 0 ? "down" : dx < 0 ? "left" : "right";
+  player.col = nCol;
+  player.row = nRow;
+  player.fromX = player.x; player.fromY = player.y;
+  player.toX = colMid(nCol); player.toY = rowMid(nRow);
+  player.t = 0;
+  Sound.hop();
+  for (let i = 0; i < 5; i++) spawnBubble(player.x, player.y, 1);
+
+  if (nRow < game.bestRow) {             // points for making progress upward
+    game.bestRow = nRow;
+    addScore(10);
+  }
+}
+
+const KEYS = {
+  ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+  w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+  W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+};
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === " " || e.key === "Enter") {
+    e.preventDefault();
+    Sound.init();
+    if (game.mode === "title" || game.mode === "over") startGame();
+    return;
+  }
+  const mv = KEYS[e.key];
+  if (mv) { e.preventDefault(); Sound.init(); tryMove(mv[0], mv[1]); }
+});
+
+function holdButton(id, dx, dy) {
+  const el = document.getElementById(id);
+  const fire = (e) => { e.preventDefault(); Sound.init(); tryMove(dx, dy); };
+  el.addEventListener("pointerdown", fire);
+}
+holdButton("up", 0, -1);
+holdButton("down", 0, 1);
+holdButton("left", -1, 0);
+holdButton("right", 1, 0);
+
+// Swipe (and tap) directly on the water.
+let touchStart = null;
+canvas.addEventListener("pointerdown", (e) => {
+  Sound.init();
+  touchStart = { x: e.clientX, y: e.clientY };
+  if (game.mode === "title" || game.mode === "over") startGame();
+});
+canvas.addEventListener("pointerup", (e) => {
+  if (!touchStart) return;
+  const dx = e.clientX - touchStart.x;
+  const dy = e.clientY - touchStart.y;
+  touchStart = null;
+  if (Math.abs(dx) < 24 && Math.abs(dy) < 24) { tryMove(0, -1); return; } // tap = go up
+  if (Math.abs(dx) > Math.abs(dy)) tryMove(Math.sign(dx), 0);
+  else tryMove(0, Math.sign(dy));
+});
+
+/* --------------------------- effects ------------------------------ */
+
+function spawnBubble(x, y, n = 1) {
+  for (let i = 0; i < n; i++) {
+    bubbles.push({ x: x + rand(-14, 14), y: y + rand(-8, 8), r: rand(2, 6), vy: rand(-45, -18), life: rand(0.6, 1.4), age: 0 });
+  }
+}
+
+function spawnBurst(x, y, colors, n = 22, power = 220) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, Math.PI * 2);
+    const sp = rand(power * 0.3, power);
+    particles.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+      r: rand(3, 7), life: rand(0.5, 1.1), age: 0,
+      color: colors[(Math.random() * colors.length) | 0],
+    });
+  }
+}
+
+function popup(text, x, y, color = "#fff59a") {
+  popups.push({ text, x, y, age: 0, life: 1.1, color });
+}
+
+const CHEERS = ["Nice!", "Yay!", "Super!", "Wow!", "Great!", "Woohoo!"];
+
+function addScore(n) {
+  game.score += n;
+  if (game.score > game.best) {
+    game.best = game.score;
+    localStorage.setItem("fishLeaperBest", String(game.best));
+  }
+}
+
+/* ------------------------- home (goal) row ------------------------ */
+
+function homeSlotX(i) { return (i + 0.5) * (W / HOME_COUNT); }
+const HOME_HALF = 52;
+
+function reachHome() {
+  let best = -1, bestDist = 1e9;
+  for (let i = 0; i < HOME_COUNT; i++) {
+    const d = Math.abs(player.x - homeSlotX(i));
+    if (d < bestDist) { bestDist = d; best = i; }
+  }
+  if (bestDist <= HOME_HALF && !game.homes[best]) {
+    game.homes[best] = true;
+    addScore(100);
+    Sound.home();
+    spawnBurst(homeSlotX(best), rowMid(ROW_HOME), ["#ffd93d", "#ff8fab", "#7ef0ff", "#b6ff8a"], 30, 260);
+    popup(CHEERS[(Math.random() * CHEERS.length) | 0], homeSlotX(best), rowMid(ROW_HOME) - 6);
+
+    if (game.homes.every(Boolean)) {
+      addScore(500);
+      Sound.level();
+      game.mode = "levelup";
+      game.timer = 2.4;
+      for (let i = 0; i < HOME_COUNT; i++) {
+        spawnBurst(homeSlotX(i), rowMid(ROW_HOME), ["#ffd93d", "#ff8fab", "#7ef0ff", "#b6ff8a"], 26, 300);
+      }
+    } else {
+      resetPlayer();
+      game.safeFor = 0.8;
+    }
+  } else {
+    // Missed the cave (or it is already full) - just a gentle bounce back.
+    Sound.bump();
+    spawnBubble(player.x, player.y, 6);
+    popup("Try there! →", player.x, rowMid(ROW_HOME) + 4, "#ffffff");
+    resetPlayer();
+  }
+}
+
+/* --------------------------- getting hurt ------------------------- */
+
+function loseLife(kind) {
+  if (game.safeFor > 0 || game.mode !== "play") return;
+  game.lives -= 1;
+  game.shake = 0.35;
+  player.hurt = 0.5;
+  spawnBurst(player.x, player.y, ["#ffffff", "#a8e6ff", "#ffd1dc"], 20, 200);
+  if (kind === "shark") { Sound.chomp(); popup("Chomp!", player.x, player.y - 26, "#ff9aa2"); }
+  else { Sound.oops(); popup("Oops!", player.x, player.y - 26, "#ffd1dc"); }
+
+  if (game.lives <= 0) {
+    game.mode = "over";
+    Sound.over();
+  } else {
+    game.mode = "dead";
+    game.timer = 0.9;
+  }
+}
+
+/* ----------------------------- update ----------------------------- */
+
+function update(dt) {
+  game.time += dt;
+  game.shake = Math.max(0, game.shake - dt);
+  player.hurt = Math.max(0, player.hurt - dt);
+
+  // Lanes drift even on the title screen so the sea always looks alive.
+  const mul = game.mode === "title" ? 0.8 : game.speedMul;
+  for (const lane of lanes) lane.scroll += lane.dir * lane.speed * mul * dt;
+
+  // Ambient bubbles
+  if (Math.random() < dt * 14) spawnBubble(rand(0, W), rand(HUD_H, H), 1);
+  bubbles = bubbles.filter((b) => {
+    b.age += dt; b.y += b.vy * dt; b.x += Math.sin((b.age + b.r) * 3) * 12 * dt;
+    return b.age < b.life && b.y > HUD_H - 20;
+  });
+  particles = particles.filter((p) => {
+    p.age += dt; p.vy += 340 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    return p.age < p.life;
+  });
+  popups = popups.filter((p) => { p.age += dt; p.y -= 26 * dt; return p.age < p.life; });
+
+  if (game.mode === "dead") {
+    game.timer -= dt;
+    if (game.timer <= 0) { resetPlayer(); game.safeFor = SAFE_TIME; game.mode = "play"; }
+    return;
+  }
+  if (game.mode === "levelup") {
+    game.timer -= dt;
+    if (game.timer <= 0) nextLevel();
+    return;
+  }
+  if (game.mode !== "play") return;
+
+  game.safeFor = Math.max(0, game.safeFor - dt);
+
+  // Hop animation
+  if (player.t < 1) {
+    player.t = Math.min(1, player.t + dt / HOP_TIME);
+    const e = player.t;
+    player.x = player.fromX + (player.toX - player.fromX) * e;
+    player.y = player.fromY + (player.toY - player.fromY) * e;
+    if (player.t >= 1) {
+      player.x = player.toX; player.y = player.toY;
+      if (player.row === ROW_HOME) { reachHome(); return; }
+      if (player.buffered) { const [bx, by] = player.buffered; player.buffered = null; tryMove(bx, by); }
+    }
+  }
+
+  // Collisions with whatever shares the fish's row
+  if (game.safeFor <= 0 && player.row !== ROW_HOME) {
+    for (const lane of lanes) {
+      if (lane.row !== player.row) continue;
+      const inset = 11;               // forgiving hitboxes for little players
+      const y = rowMid(lane.row) - lane.h / 2 + inset;
+      const h = lane.h - inset * 2;
+      for (let i = 0; i < lane.count; i++) {
+        const x = laneItemX(lane, i) + inset;
+        if (circleHitsRect(player.x, player.y, 12, x, y, lane.w - inset * 2, h)) {
+          loseLife(lane.type === "shark" ? "shark" : "bump");
+          return;
+        }
+      }
+    }
+  }
+}
+
+/* ---------------------------- creatures --------------------------- */
+
+function eyes(x, y, r, look = 1) {
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.fillStyle = "#14202e";
+  ctx.beginPath(); ctx.arc(x + r * 0.28 * look, y + r * 0.1, r * 0.5, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.9)";
+  ctx.beginPath(); ctx.arc(x + r * 0.05, y - r * 0.35, r * 0.22, 0, 7); ctx.fill();
+}
+
+function smile(x, y, w, up = true) {
+  ctx.strokeStyle = "rgba(20,32,46,.75)";
+  ctx.lineWidth = 2.5; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(x, y, w, up ? 0.25 * Math.PI : 1.25 * Math.PI, up ? 0.75 * Math.PI : 1.75 * Math.PI);
+  ctx.stroke();
+}
+
+function drawJelly(x, y, w, h, t) {
+  const cx = x + w / 2, cy = y + h * 0.36;
+  const pulse = 1 + Math.sin(t * 3 + x * 0.03) * 0.07;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(pulse, 2 - pulse);
+  ctx.fillStyle = "#ff8fd0";
+  ctx.beginPath(); ctx.ellipse(0, 0, w / 2, h * 0.34, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.45)";
+  ctx.beginPath(); ctx.ellipse(-w * 0.14, -h * 0.1, w * 0.13, h * 0.09, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = "#ff6fc0"; ctx.lineWidth = 4; ctx.lineCap = "round";
+  for (let i = 0; i < 4; i++) {
+    const tx = x + w * (0.22 + i * 0.19);
+    ctx.beginPath();
+    ctx.moveTo(tx, cy + 2);
+    ctx.quadraticCurveTo(tx + Math.sin(t * 4 + i) * 7, cy + h * 0.35, tx + Math.sin(t * 4 + i + 1) * 9, cy + h * 0.62);
+    ctx.stroke();
+  }
+  eyes(cx - 8, cy - 4, 5.5); eyes(cx + 8, cy - 4, 5.5);
+  smile(cx, cy + 1, 7);
+}
+
+function drawUrchin(x, y, w, h, t) {
+  const cx = x + w / 2, cy = y + h / 2, r = w * 0.31;
+  ctx.strokeStyle = "#7a52c9"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + Math.sin(t * 2) * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r * 0.7, cy + Math.sin(a) * r * 0.7);
+    ctx.lineTo(cx + Math.cos(a) * (r + 9), cy + Math.sin(a) * (r + 9));
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#9b6ef0";
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+  eyes(cx - 6, cy - 2, 5); eyes(cx + 6, cy - 2, 5);
+  smile(cx, cy + 4, 6, false);
+}
+
+function drawCrab(x, y, w, h, t) {
+  const cx = x + w / 2, cy = y + h * 0.55;
+  const wig = Math.sin(t * 7 + x * 0.05) * 4;
+  ctx.strokeStyle = "#d64545"; ctx.lineWidth = 4; ctx.lineCap = "round";
+  for (let s = -1; s <= 1; s += 2) {
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(cx + s * w * 0.2, cy + 2 + i * 4);
+      ctx.lineTo(cx + s * (w * 0.42), cy + 10 + i * 3 + wig * s);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = "#ff6b6b";
+  for (let s = -1; s <= 1; s += 2) {
+    ctx.save();
+    ctx.translate(cx + s * w * 0.42, cy - h * 0.28);
+    ctx.rotate(s * (0.3 + Math.sin(t * 6) * 0.25));
+    ctx.beginPath(); ctx.ellipse(0, 0, 9, 7, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = "#ff5252";
+  ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.34, h * 0.34, 0, 0, 7); ctx.fill();
+  eyes(cx - 8, cy - 9, 6); eyes(cx + 8, cy - 9, 6);
+  smile(cx, cy - 1, 8);
+}
+
+function drawNet(x, y, w, h, t) {
+  const bob = Math.sin(t * 2.5 + x * 0.02) * 3;
+  ctx.save();
+  ctx.translate(x, y + bob);
+
+  ctx.save();                                   // mesh, clipped inside the net bag
+  roundRect(3, 5, w - 6, h - 10, 12); ctx.clip();
+  ctx.fillStyle = "rgba(255,248,214,.22)"; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(255,250,220,.9)"; ctx.lineWidth = 2;
+  for (let i = -3; i < 9; i++) {
+    ctx.beginPath(); ctx.moveTo(i * 11, 0); ctx.lineTo(i * 11 + h, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(i * 11 + h, 0); ctx.lineTo(i * 11, h); ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "#fff8d6"; ctx.lineWidth = 3.5;
+  roundRect(3, 5, w - 6, h - 10, 12); ctx.stroke();
+
+  ctx.fillStyle = "#ffb703";                    // floats bobbing on top of the net
+  ctx.beginPath(); ctx.arc(w * 0.3, 4, 6, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(w * 0.7, 4, 6, 0, 7); ctx.fill();
+  ctx.fillStyle = "#e07a00";
+  ctx.beginPath(); ctx.arc(w * 0.3, 4, 2.5, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(w * 0.7, 4, 2.5, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+function drawShark(x, y, w, h, t, dir) {
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  if (dir < 0) ctx.scale(-1, 1);
+  const swish = Math.sin(t * 6) * 6;
+
+  ctx.fillStyle = "#6d8595";                      // tail
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.42, 0);
+  ctx.lineTo(-w * 0.52, -h * 0.42 + swish);
+  ctx.lineTo(-w * 0.30, 0);
+  ctx.lineTo(-w * 0.52, h * 0.42 + swish);
+  ctx.closePath(); ctx.fill();
+
+  ctx.beginPath();                                 // dorsal fin
+  ctx.moveTo(-w * 0.02, -h * 0.28);
+  ctx.lineTo(w * 0.06, -h * 0.72);
+  ctx.lineTo(w * 0.20, -h * 0.24);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = "#8aa4b4";                       // body
+  ctx.beginPath(); ctx.ellipse(0, 0, w * 0.42, h * 0.36, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#dbe7ee";                       // belly
+  ctx.beginPath(); ctx.ellipse(0, h * 0.14, w * 0.36, h * 0.18, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#6d8595";                       // side fin
+  ctx.beginPath();
+  ctx.moveTo(w * 0.02, h * 0.14); ctx.lineTo(-w * 0.10, h * 0.5); ctx.lineTo(w * 0.16, h * 0.2);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = "#fff";                          // silly grin with big teeth
+  ctx.beginPath();
+  ctx.moveTo(w * 0.14, h * 0.06); ctx.lineTo(w * 0.42, h * 0.02); ctx.lineTo(w * 0.16, h * 0.24);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#3c5563";
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(w * (0.17 + i * 0.06), h * 0.08);
+    ctx.lineTo(w * (0.20 + i * 0.06), h * 0.17);
+    ctx.lineTo(w * (0.23 + i * 0.06), h * 0.08);
+    ctx.closePath(); ctx.fill();
+  }
+  eyes(w * 0.24, -h * 0.14, 6.5);
+  ctx.restore();
+}
+
+function drawFish(x, y, scale, facing, t, hurt) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  const rot = facing === "up" ? -Math.PI / 2 : facing === "down" ? Math.PI / 2 : 0;
+  if (facing === "left") ctx.scale(-1, 1);
+  else ctx.rotate(rot);
+
+  const wag = Math.sin(t * 12) * 5;
+  const body = hurt > 0 && Math.floor(t * 22) % 2 === 0 ? "#ffffff" : "#ff9f1c";
+
+  ctx.fillStyle = "#f4761f";                        // tail
+  ctx.beginPath();
+  ctx.moveTo(-13, 0); ctx.lineTo(-25, -11 + wag); ctx.lineTo(-25, 11 + wag);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = body;                             // body
+  ctx.beginPath(); ctx.ellipse(0, 0, 19, 14, 0, 0, 7); ctx.fill();
+
+  ctx.fillStyle = "#fff6e8";                        // stripes
+  ctx.beginPath(); ctx.ellipse(-2, 0, 4.5, 13.2, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(11, 0, 3.5, 10.5, 0, 0, 7); ctx.fill();
+
+  ctx.fillStyle = "#f4761f";                        // top fin
+  ctx.beginPath();
+  ctx.moveTo(-4, -12); ctx.quadraticCurveTo(2, -24, 10, -10);
+  ctx.closePath(); ctx.fill();
+
+  eyes(11, -3.5, 5.5);
+  ctx.strokeStyle = "rgba(60,30,0,.7)"; ctx.lineWidth = 2; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(15, 3, 4, -0.4, 1.2); ctx.stroke();
+  ctx.restore();
+}
+
+/* ------------------------------ scene ----------------------------- */
+
+function drawWater() {
+  const g = ctx.createLinearGradient(0, HUD_H, 0, H);
+  g.addColorStop(0, "#2ec5f6");
+  g.addColorStop(0.55, "#1a8fd0");
+  g.addColorStop(1, "#0d5ea6");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, HUD_H, W, H - HUD_H);
+
+  // sun rays
+  ctx.save();
+  ctx.globalAlpha = 0.10; ctx.fillStyle = "#fff";
+  for (let i = 0; i < 5; i++) {
+    const x = ((i * 231 + game.time * 8) % (W + 260)) - 130;
+    ctx.beginPath();
+    ctx.moveTo(x, HUD_H); ctx.lineTo(x + 70, HUD_H); ctx.lineTo(x + 170, H); ctx.lineTo(x - 20, H);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+
+  // safe rows: kelp bed and sandy floor
+  ctx.fillStyle = "rgba(28,178,120,.30)";
+  ctx.fillRect(0, rowY(ROW_KELP), W, TILE);
+  ctx.strokeStyle = "#2fc98a"; ctx.lineWidth = 9; ctx.lineCap = "round";
+  for (let i = 0; i < 16; i++) {
+    const x = 26 + i * 54;
+    const sway = Math.sin(game.time * 1.6 + i) * 9;
+    ctx.beginPath();
+    ctx.moveTo(x, rowY(ROW_KELP) + TILE);
+    ctx.quadraticCurveTo(x + sway, rowY(ROW_KELP) + TILE * 0.5, x + sway * 1.4, rowY(ROW_KELP) + 4);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "#f2d9a0";
+  ctx.fillRect(0, rowY(ROW_START), W, TILE);
+  ctx.fillStyle = "rgba(214,178,120,.7)";
+  for (let i = 0; i < 26; i++) {
+    const x = (i * 71 + 20) % W;
+    ctx.beginPath(); ctx.ellipse(x, rowY(ROW_START) + 18 + (i % 3) * 13, 9, 4, 0, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = "#ffb4d0";
+  for (let i = 0; i < 5; i++) {                       // little shells on the sand
+    const x = 70 + i * 175;
+    const y = rowY(ROW_START) + TILE - 12;
+    ctx.beginPath(); ctx.arc(x, y, 8, Math.PI, 0); ctx.fill();
+  }
+}
+
+function coralClump(x, base, hue) {
+  ctx.strokeStyle = hue; ctx.lineWidth = 9; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, base - 26); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, base - 12); ctx.lineTo(x - 13, base - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, base - 14); ctx.lineTo(x + 13, base - 32); ctx.stroke();
+  ctx.fillStyle = hue;
+  [[0, -30], [-13, -34], [13, -36]].forEach(([dx, dy]) => {
+    ctx.beginPath(); ctx.arc(x + dx, base + dy, 6, 0, 7); ctx.fill();
+  });
+}
+
+function drawHomes() {
+  const top = rowY(ROW_HOME), base = top + TILE;
+  ctx.fillStyle = "#083a6b";
+  ctx.fillRect(0, top, W, TILE);
+
+  // chunky coral pillars standing between the caves
+  const CORAL = ["#ff7f9c", "#ffa14a", "#c47bff", "#ff7f9c", "#66e0c0", "#ffa14a"];
+  for (let i = 0; i <= HOME_COUNT; i++) {
+    coralClump(i * (W / HOME_COUNT), base, CORAL[i % CORAL.length]);
+  }
+
+  for (let i = 0; i < HOME_COUNT; i++) {
+    const cx = homeSlotX(i);
+    const filled = game.homes[i];
+    const glow = 0.5 + Math.sin(game.time * 3 + i) * 0.5;
+
+    // rocky mound with a cave mouth carved into it
+    ctx.fillStyle = filled ? "#2a6f5a" : "#2b5d8f";
+    ctx.beginPath();
+    ctx.ellipse(cx, base + 4, HOME_HALF * 0.95, TILE * 0.62, 0, Math.PI, 0);
+    ctx.fill();
+
+    ctx.fillStyle = "#031f3c";
+    ctx.beginPath();
+    ctx.ellipse(cx, base, HOME_HALF * 0.62, TILE * 0.44, 0, Math.PI, 0);
+    ctx.fill();
+
+    ctx.strokeStyle = filled ? "#ffd166" : `rgba(126,240,200,${0.55 + glow * 0.45})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(cx, base, HOME_HALF * 0.62, TILE * 0.44, 0, Math.PI, 0);
+    ctx.stroke();
+
+    if (filled) {
+      drawFish(cx, base - 18, 0.7, "up", game.time + i * 2, 0);
+      ctx.fillStyle = "#ffd166";
+      ctx.font = "bold 18px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("★", cx, top + 16);
+    } else {
+      // friendly bubbles drifting out of an empty cave say "come in here"
+      ctx.strokeStyle = `rgba(190,240,255,${0.35 + glow * 0.45})`;
+      ctx.lineWidth = 2;
+      for (let b = 0; b < 3; b++) {
+        const p = ((game.time * 0.5 + b / 3 + i * 0.17) % 1);
+        ctx.beginPath();
+        ctx.arc(cx + Math.sin(p * 6 + b) * 8, base - 14 - p * 30, 3 + b, 0, 7);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawLanes() {
+  for (const lane of lanes) {
+    const y = rowY(lane.row) + (TILE - lane.h) / 2;
+    for (let i = 0; i < lane.count; i++) {
+      const x = laneItemX(lane, i);
+      if (x > W + 20 || x < -lane.w - 20) continue;
+      switch (lane.type) {
+        case "jelly":  drawJelly(x, y, lane.w, lane.h, game.time); break;
+        case "urchin": drawUrchin(x, y, lane.w, lane.h, game.time); break;
+        case "crab":   drawCrab(x, y, lane.w, lane.h, game.time); break;
+        case "net":    drawNet(x, y, lane.w, lane.h, game.time); break;
+        case "shark":  drawShark(x, y, lane.w, lane.h, game.time, lane.dir); break;
+      }
+    }
+  }
+}
+
+function drawStarfish(x, y, r, color) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 === 0 ? r : r * 0.45;
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    ctx[i ? "lineTo" : "moveTo"](Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD(showStats) {
+  ctx.fillStyle = "#06304f";
+  ctx.fillRect(0, 0, W, HUD_H);
+  if (!showStats) return;
+
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffd166";
+  ctx.font = "bold 24px system-ui, sans-serif";
+  ctx.fillText("Score " + game.score, 16, HUD_H / 2);
+
+  ctx.fillStyle = "#9fe0ff";
+  ctx.font = "bold 18px system-ui, sans-serif";
+  ctx.fillText("Best " + game.best, 176, HUD_H / 2 + 1);
+
+  for (let i = 0; i < game.lives; i++) {
+    drawStarfish(300 + i * 32, HUD_H / 2, 13, "#ff9f1c");
+  }
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 22px system-ui, sans-serif";
+  ctx.fillText("Level " + game.level, W - 62, HUD_H / 2);
+
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+}
+
+function drawEffects() {
+  for (const b of bubbles) {
+    const a = 1 - b.age / b.life;
+    ctx.strokeStyle = `rgba(255,255,255,${0.55 * a})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.stroke();
+  }
+  for (const p of particles) {
+    const a = 1 - p.age / p.life;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  for (const p of popups) {
+    const a = 1 - p.age / p.life;
+    ctx.globalAlpha = a;
+    ctx.font = "bold 28px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.lineWidth = 6; ctx.strokeStyle = "rgba(6,48,79,.9)";
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillStyle = p.color;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function bigText(text, y, size, color = "#fff") {
+  ctx.font = `bold ${size}px "Comic Sans MS", system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.lineWidth = size * 0.18; ctx.strokeStyle = "rgba(4,33,63,.85)";
+  ctx.strokeText(text, W / 2, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, W / 2, y);
+}
+
+function drawTitle() {
+  ctx.fillStyle = "rgba(4,33,63,.62)";
+  ctx.fillRect(0, 0, W, H);
+
+  bigText("FISH LEAPER", 150, 74, "#ffd166");
+  bigText("Hop up to the coral caves!", 202, 30, "#bff0ff");
+
+  const bob = Math.sin(game.time * 2) * 8;
+  drawFish(W / 2, 282 + bob, 2.6, "right", game.time, 0);
+
+  drawJelly(W / 2 - 250, 366, 46, 52, game.time);
+  drawCrab(W / 2 - 130, 372, 54, 42, game.time);
+  drawUrchin(W / 2 - 10, 370, 44, 44, game.time);
+  drawShark(W / 2 + 80, 366, 132, 54, game.time, 1);
+
+  bigText("Arrow keys, big buttons, or swipe", 480, 28, "#ffffff");
+  bigText("Dodge jellies, crabs, nets and SHARKS", 520, 26, "#ffe27a");
+
+  const pulse = 1 + Math.sin(game.time * 4) * 0.05;
+  ctx.save();
+  ctx.translate(W / 2, 610); ctx.scale(pulse, pulse);
+  ctx.fillStyle = "#ffb703";
+  roundRect(-150, -40, 300, 80, 26); ctx.fill();
+  ctx.fillStyle = "#06304f";
+  ctx.font = 'bold 40px "Comic Sans MS", system-ui, sans-serif';
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("PLAY!", 0, 2);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+
+  bigText("Tap anywhere or press Space", 700, 22, "#cfeaff");
+}
+
+function drawGameOver() {
+  ctx.fillStyle = "rgba(4,33,63,.68)";
+  ctx.fillRect(0, 0, W, H);
+  bigText("Good swimming!", 250, 62, "#ffd166");
+  bigText("You scored " + game.score, 330, 44, "#ffffff");
+  bigText("Best ever: " + game.best, 386, 30, "#bff0ff");
+  drawFish(W / 2, 470, 2.4, "right", game.time, 0);
+  const pulse = 1 + Math.sin(game.time * 4) * 0.05;
+  ctx.save();
+  ctx.translate(W / 2, 600); ctx.scale(pulse, pulse);
+  ctx.fillStyle = "#ffb703";
+  roundRect(-180, -40, 360, 80, 26); ctx.fill();
+  ctx.fillStyle = "#06304f";
+  ctx.font = 'bold 36px "Comic Sans MS", system-ui, sans-serif';
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("PLAY AGAIN", 0, 2);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
+function drawLevelUp() {
+  ctx.fillStyle = "rgba(4,33,63,.45)";
+  ctx.fillRect(0, 0, W, H);
+  const s = 1 + Math.sin(game.time * 8) * 0.06;
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.scale(s, s); ctx.translate(-W / 2, -H / 2);
+  bigText("ALL CAVES FULL!", H / 2 - 30, 60, "#ffd166");
+  bigText("Level " + (game.level + 1) + " - here we go!", H / 2 + 40, 34, "#ffffff");
+  ctx.restore();
+}
+
+function render() {
+  ctx.save();
+  if (game.shake > 0) {
+    ctx.translate(rand(-5, 5) * game.shake * 3, rand(-5, 5) * game.shake * 3);
+  }
+  drawWater();
+  drawHomes();
+  drawLanes();
+
+  if (game.mode === "play" || game.mode === "dead" || game.mode === "levelup") {
+    const hop = player.t < 1 ? Math.sin(player.t * Math.PI) : 0;
+    ctx.save();
+    // While invincible the fish shimmers, but never vanishes - small players
+    // should always be able to see where they are.
+    ctx.globalAlpha = game.safeFor > 0 ? 0.6 + 0.4 * Math.abs(Math.sin(game.time * 9)) : 1;
+    if (game.safeFor > 0) {
+      ctx.fillStyle = "rgba(255,255,255,.18)";
+      ctx.beginPath(); ctx.arc(player.x, player.y - hop * 10, 26, 0, 7); ctx.fill();
+    }
+    drawFish(player.x, player.y - hop * 10, 1 + hop * 0.25, player.facing, game.time, player.hurt);
+    ctx.restore();
+  }
+
+  drawEffects();
+  ctx.restore();
+
+  drawHUD(game.mode !== "title");
+
+  if (game.mode === "title") drawTitle();
+  else if (game.mode === "over") drawGameOver();
+  else if (game.mode === "levelup") drawLevelUp();
+}
+
+/* ------------------------------ loop ------------------------------ */
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
