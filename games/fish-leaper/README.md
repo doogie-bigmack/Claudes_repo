@@ -56,10 +56,21 @@ shipped, every note is generated as you play:
 | Triangle | triangle wave | bass line |
 | Noise | filtered white noise | kick, snare, hats |
 
-Two themes, both in C major over a **C - Am - F - G** progression: a calmer
-4-bar tune on the title screen, and an 8-bar gameplay loop at 152 BPM with a
-drum fill on the turnaround. The tempo climbs 5 BPM per level (capped at 184),
-so the ocean feels busier as you get further without the music changing key.
+Three original themes:
+
+| Theme | When | Feel |
+| --- | --- | --- |
+| Title | title screen | 4 bars, 122 BPM, C major |
+| **Reef Party** | gameplay (default) | 8 bars, 152 BPM, C - Am - F - G, drum fill on the turnaround |
+| **Deep Water** | gameplay (press 🎵) | 8 bars, 160 BPM, E minor riff, chugging bass and double kick |
+
+The 🎵 button under the speaker switches the gameplay theme and remembers your
+pick. Deep Water is the heavy one: staccato low-E chug on the triangle channel,
+root/fifth 16ths on pulse 2 to fake a power chord the way NES games did, and a
+beat that ends each bar on a double kick.
+
+Tempo climbs 5 BPM per level (capped at 184), so the ocean feels busier as you
+get further without the music changing key.
 
 Patterns live in the `SONGS` object as 16 steps per bar, where `.` means
 "nothing on this step" — so a bar of melody is just a readable string:

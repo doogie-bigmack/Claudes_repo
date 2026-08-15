@@ -34,10 +34,13 @@
   #left  { grid-column: 1; grid-row: 2; }
   #down  { grid-column: 2; grid-row: 2; }
   #right { grid-column: 3; grid-row: 2; }
-  #mute {
-    position: fixed; top: 8px; right: 10px; width: 44px; height: 44px; border-radius: 50%;
+  #mute, #track {
+    position: fixed; right: 10px; width: 44px; height: 44px; border-radius: 50%;
     border: none; font-size: 20px; background: rgba(255,255,255,.22); color: #fff; cursor: pointer;
   }
+  #mute { top: 8px; }
+  #track { top: 60px; }
+  #mute:focus-visible, #track:focus-visible, .btn:focus-visible { outline: 3px solid #ffd166; outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -51,6 +54,7 @@
   </div>
 </div>
 <button id="mute" aria-label="Sound on or off">🔊</button>
+<button id="track" aria-label="Switch music track">🎵</button>
 
 <script>
 "use strict";
@@ -188,6 +192,23 @@ const BASS = {
 const BEAT = "k . h . s . h . k . h k s . h .";
 const FILL = "k . h . s . h . k . s . s s s s";
 
+// "Deep Water" riff material: chugging low roots with a scale tail, the
+// NES trick of alternating root/fifth 16ths to fake a power chord, and a
+// driving beat that ends each bar on a double kick.
+const RIFF = {
+  a: "E2 E2 .  E2 .  E2 E2 .  G2 .  A2 .  E2 .  D2 .",
+  b: "E2 E2 .  E2 .  E2 E2 .  C3 .  B2 .  A2 .  G2 .",
+  c: "E2 E2 .  E2 .  G2 .  A2 .  B2 .  A2 .  G2 .  E2",
+  d: "E2 .  D2 .  C2 .  B2 .  A2 .  G2 .  E2 .  E2 E2",
+};
+const POWER = {
+  E: "E3 B3 . . E3 B3 . . E3 B3 . . E3 B3 . .",
+  G: "G3 D4 . . G3 D4 . . G3 D4 . . G3 D4 . .",
+  A: "A3 E4 . . A3 E4 . . A3 E4 . . A3 E4 . .",
+};
+const BEAT_H = "k h . h s h k h k h . h s h k k";
+const FILL_H = "s . s . s s s s k . k . s s s s";
+
 const SONGS = {
   // Title screen: slower, friendly, room to breathe.
   title: {
@@ -216,6 +237,25 @@ const SONGS = {
     p2: bars(ARP.C, ARP.Am, ARP.F, ARP.G, ARP.C, ARP.Am, ARP.F, ARP.G),
     tri: bars(BASS.C, BASS.Am, BASS.F, BASS.G, BASS.C, BASS.Am, BASS.F, BASS.G),
     dr: bars(BEAT, BEAT, BEAT, BEAT, BEAT, BEAT, BEAT, FILL),
+  },
+  // "Deep Water": the heavy alternate. Original riff in E minor, chugging
+  // bass, fake power chords and a double-kick beat - metal energy the chip
+  // can actually deliver.
+  heavy: {
+    bpm: 160,
+    mix: { p1: 1.05, p2: 0.8, tri: 1.2 },
+    p1: bars(
+      "E4 . . . G4 . E4 . B4 . A4 . G4 . E4 .",
+      "E4 . . . G4 . E4 . D5 . B4 . A4 . G4 .",
+      "B4 . . . D5 . B4 . A4 . G4 . E4 . D4 .",
+      "E5 . D5 . B4 . A4 . G4 . A4 . B4 . . .",
+      "E4 . . . G4 . E4 . B4 . A4 . G4 . E4 .",
+      "E4 . . . G4 . E4 . D5 . B4 . A4 . G4 .",
+      "B4 . D5 . E5 . D5 . B4 . A4 . G4 . E4 .",
+      "E5 . . . E5 . D5 . B4 . . . E4 . . ."),
+    p2: bars(POWER.E, POWER.E, POWER.G, POWER.A, POWER.E, POWER.E, POWER.G, POWER.G),
+    tri: bars(RIFF.a, RIFF.a, RIFF.b, RIFF.c, RIFF.a, RIFF.a, RIFF.b, RIFF.d),
+    dr: bars(BEAT_H, BEAT_H, BEAT_H, BEAT_H, BEAT_H, BEAT_H, BEAT_H, FILL_H),
   },
 };
 
@@ -269,6 +309,8 @@ const Music = {
 
   get stepDur() { return 60 / this.bpm / 4; },
 
+  playGameplay() { this.play(GAMEPLAY_TRACKS[trackChoice]); },
+
   play(name) {
     if (!this.ctx || this.name === name) return;
     this.name = name;
@@ -287,7 +329,8 @@ const Music = {
   autoStart() {
     if (!this.ctx) return;
     if (game.mode === "over") this.stop();
-    else this.play(game.mode === "title" ? "title" : "main");
+    else if (game.mode === "title") this.play("title");
+    else this.playGameplay();
   },
 
   tick() {
@@ -304,12 +347,13 @@ const Music = {
 
   scheduleStep(step, time) {
     const s = this.song, d = this.stepDur;
+    const mix = s.mix || {};
     const lead = s.tracks.p1[step];
-    if (lead) this.voice(this.waves.lead, lead.freq, time, Math.min(lead.steps, 8) * d * 0.92, 0.20);
+    if (lead) this.voice(this.waves.lead, lead.freq, time, Math.min(lead.steps, 8) * d * 0.92, 0.20 * (mix.p1 || 1));
     const comp = s.tracks.p2[step];
-    if (comp) this.voice(this.waves.comp, comp.freq, time, Math.min(comp.steps, 4) * d * 0.7, 0.085);
+    if (comp) this.voice(this.waves.comp, comp.freq, time, Math.min(comp.steps, 4) * d * 0.7, 0.085 * (mix.p2 || 1));
     const bass = s.tracks.tri[step];
-    if (bass) this.voice(null, bass.freq, time, Math.min(bass.steps, 4) * d * 0.95, 0.34);
+    if (bass) this.voice(null, bass.freq, time, Math.min(bass.steps, 4) * d * 0.95, 0.34 * (mix.tri || 1));
     const hit = s.tracks.dr[step];
     if (hit) this.drum({ k: "kick", s: "snare", h: "hat" }[hit.tok] || "hat", time - this.ctx.currentTime, 1);
   },
@@ -367,6 +411,25 @@ muteBtn.addEventListener("click", (e) => {
   Sound.on = !Sound.on;
   Music.setMuted(!Sound.on);
   muteBtn.textContent = Sound.on ? "🔊" : "🔇";
+});
+
+// Two gameplay themes: the reef tune, and the heavy one.
+const GAMEPLAY_TRACKS = ["main", "heavy"];
+let trackChoice = Number(localStorage.getItem("fishLeaperTrack") || 0) ? 1 : 0;
+
+const trackBtn = document.getElementById("track");
+function paintTrackBtn() {
+  trackBtn.textContent = trackChoice ? "🎸" : "🎵";
+  trackBtn.title = trackChoice ? "Music: Deep Water (heavy)" : "Music: Reef Party";
+}
+paintTrackBtn();
+trackBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  Sound.init();
+  trackChoice = 1 - trackChoice;
+  localStorage.setItem("fishLeaperTrack", String(trackChoice));
+  paintTrackBtn();
+  if (game.mode !== "title" && game.mode !== "over") Music.playGameplay();
 });
 
 // Silence the chip while the tab is in the background.
@@ -464,7 +527,7 @@ function startGame() {
   particles = [];
   popups = [];
   resetPlayer();
-  Music.play("main");
+  Music.playGameplay();
   Music.setLevel(1);
 }
 
