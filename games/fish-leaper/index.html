@@ -124,8 +124,10 @@ const Sound = {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (AC) this.ctx = new AC();
+      if (this.ctx) Music.attach(this.ctx);
     }
     if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+    Music.autoStart();
   },
   tone(freq, dur, when = 0, type = "sine", vol = 0.18, slideTo = null) {
     if (!this.on || !this.ctx) return;
@@ -142,20 +144,236 @@ const Sound = {
     osc.start(t0);
     osc.stop(t0 + dur + 0.05);
   },
-  hop()   { this.tone(420, 0.12, 0, "sine", 0.14, 760); },
-  bump()  { this.tone(240, 0.16, 0, "triangle", 0.12, 180); },
-  oops()  { this.tone(400, 0.3, 0, "sawtooth", 0.13, 90); this.tone(180, 0.4, 0.06, "sine", 0.1, 70); },
-  chomp() { this.tone(120, 0.18, 0, "square", 0.13, 60); this.tone(90, 0.22, 0.12, "square", 0.11, 50); },
-  home()  { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.16, i * 0.07, "triangle", 0.16)); },
-  level() { [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.24, i * 0.1, "square", 0.12)); },
-  over()  { [440, 392, 330, 262].forEach((f, i) => this.tone(f, 0.3, i * 0.16, "sine", 0.14)); },
+  // Effects use the same voices as the music: pulse blips and noise bursts.
+  hop()   { this.tone(430, 0.10, 0, "square", 0.10, 820); },
+  bump()  { this.tone(220, 0.14, 0, "square", 0.09, 150); },
+  oops()  { this.tone(440, 0.28, 0, "square", 0.10, 90); Music.drum("snare", 0, 0.5); },
+  chomp() { Music.drum("kick", 0, 1); Music.drum("snare", 0.08, 0.9); this.tone(110, 0.22, 0.02, "square", 0.10, 48); },
+  home()  { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.14, i * 0.06, "square", 0.11)); },
+  level() { [523, 659, 784, 1046, 1318, 1046, 1318].forEach((f, i) => this.tone(f, 0.2, i * 0.09, "square", 0.10)); },
+  over()  { [440, 415, 392, 330, 262].forEach((f, i) => this.tone(f, 0.26, i * 0.15, "square", 0.11)); },
+};
+
+/* ------------------------------ music ----------------------------- *
+ * A tiny NES-flavoured sound chip: two pulse channels (lead + comp),  *
+ * a triangle channel for bass and a noise channel for drums, driven   *
+ * by a look-ahead step sequencer. Patterns are written as 16 steps    *
+ * per bar, where "." means "nothing happens on this step".            *
+ * ------------------------------------------------------------------ */
+
+const SEMITONE = { C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5, "F#": 6, G: 7, "G#": 8, A: 9, "A#": 10, B: 11 };
+
+function noteFreq(tok) {
+  const m = /^([A-G]#?)(\d)$/.exec(tok);
+  if (!m) return 0;
+  const midi = (Number(m[2]) + 1) * 12 + SEMITONE[m[1]];
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+const bars = (...b) => b.join(" ");
+
+// Chord shapes reused by the comp and bass channels.
+const ARP = {
+  C:  ". C4 . E4 . G4 . E4 . C5 . G4 . E4 . G4",
+  Am: ". A3 . C4 . E4 . C4 . A4 . E4 . C4 . E4",
+  F:  ". F3 . A3 . C4 . A3 . F4 . C4 . A3 . C4",
+  G:  ". G3 . B3 . D4 . B3 . G4 . D4 . B3 . D4",
+};
+const BASS = {
+  C:  "C2 . C2 . G2 . C2 . C3 . C2 . G2 . G2 .",
+  Am: "A2 . A2 . E2 . A2 . A3 . A2 . E2 . E2 .",
+  F:  "F2 . F2 . C3 . F2 . F3 . F2 . C3 . C3 .",
+  G:  "G2 . G2 . D3 . G2 . G3 . G2 . D3 . D3 .",
+};
+const BEAT = "k . h . s . h . k . h k s . h .";
+const FILL = "k . h . s . h . k . s . s s s s";
+
+const SONGS = {
+  // Title screen: slower, friendly, room to breathe.
+  title: {
+    bpm: 122,
+    p1: bars(
+      "C5 . . . B4 . G4 . A4 . . . . . . .",
+      "G4 . . . E4 . G4 . C5 . . . . . . .",
+      "D5 . . . C5 . A4 . B4 . . . . . . .",
+      "G4 . . . A4 . B4 . C5 . . . . . . ."),
+    p2: bars(ARP.C, ARP.Am, ARP.G, ARP.C),
+    tri: bars(BASS.C, BASS.Am, BASS.G, BASS.C),
+    dr: bars(...Array(4).fill("k . . . h . . . k . . . h . . .")),
+  },
+  // Gameplay: eight bars over C - Am - F - G, twice, with a fill on the turn.
+  main: {
+    bpm: 152,
+    p1: bars(
+      "G4 . A4 . C5 . . . C5 . A4 . G4 . . .",
+      "E4 . G4 . A4 . . . G4 . . . . . E4 G4",
+      "A4 . C5 . D5 . . . E5 . D5 . C5 . . .",
+      "D5 . C5 . A4 . G4 . G4 . . . . . . .",
+      "E5 . E5 . D5 . C5 . D5 . . . C5 . A4 .",
+      "G4 . A4 . C5 . D5 . E5 . . . . . . .",
+      "F5 . E5 . D5 . C5 . D5 . E5 . D5 . C5 .",
+      "G4 . . . C5 . . . B4 . D5 . C5 . . ."),
+    p2: bars(ARP.C, ARP.Am, ARP.F, ARP.G, ARP.C, ARP.Am, ARP.F, ARP.G),
+    tri: bars(BASS.C, BASS.Am, BASS.F, BASS.G, BASS.C, BASS.Am, BASS.F, BASS.G),
+    dr: bars(BEAT, BEAT, BEAT, BEAT, BEAT, BEAT, BEAT, FILL),
+  },
+};
+
+function compileTrack(text) {
+  const toks = text.trim().split(/\s+/);
+  const grid = new Array(toks.length).fill(null);
+  const hits = [];
+  toks.forEach((t, i) => { if (t !== ".") hits.push(i); });
+  hits.forEach((i, k) => {
+    const end = k + 1 < hits.length ? hits[k + 1] : toks.length;
+    grid[i] = { tok: toks[i], freq: noteFreq(toks[i]), steps: end - i };
+  });
+  return grid;
+}
+
+for (const song of Object.values(SONGS)) {
+  song.tracks = { p1: compileTrack(song.p1), p2: compileTrack(song.p2), tri: compileTrack(song.tri), dr: compileTrack(song.dr) };
+  song.steps = song.tracks.p1.length;
+  for (const [name, t] of Object.entries(song.tracks)) {
+    if (t.length !== song.steps) console.warn(`track ${name} is ${t.length} steps, expected ${song.steps}`);
+  }
+}
+
+const Music = {
+  ctx: null, bus: null, noise: null, waves: null,
+  song: null, name: null, step: 0, nextTime: 0, bpm: 150, timer: null,
+
+  attach(audioCtx) {
+    if (this.ctx === audioCtx) return;
+    this.ctx = audioCtx;
+    this.bus = audioCtx.createGain();
+    this.bus.gain.value = Sound.on ? 0.5 : 0;
+    this.bus.connect(audioCtx.destination);
+
+    // Pulse waves: 12.5% and 25% duty, the classic NES lead timbres.
+    this.waves = { lead: this.pulse(0.25), comp: this.pulse(0.125) };
+
+    const len = Math.floor(audioCtx.sampleRate * 0.5);
+    this.noise = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const data = this.noise.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  },
+
+  pulse(duty, harmonics = 28) {
+    const real = new Float32Array(harmonics), imag = new Float32Array(harmonics);
+    for (let n = 1; n < harmonics; n++) real[n] = (2 / (n * Math.PI)) * Math.sin(n * Math.PI * duty);
+    return this.ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  },
+
+  setMuted(muted) { if (this.bus) this.bus.gain.value = muted ? 0 : 0.5; },
+
+  get stepDur() { return 60 / this.bpm / 4; },
+
+  play(name) {
+    if (!this.ctx || this.name === name) return;
+    this.name = name;
+    this.song = SONGS[name];
+    this.bpm = this.song.bpm;
+    this.step = 0;
+    this.nextTime = this.ctx.currentTime + 0.08;
+    if (!this.timer) this.timer = setInterval(() => this.tick(), 30);
+  },
+
+  stop() { this.name = null; this.song = null; },
+
+  // Levels nudge the tempo up so the ocean feels busier without changing key.
+  setLevel(level) { if (this.song) this.bpm = Math.min(184, this.song.bpm + (level - 1) * 5); },
+
+  autoStart() {
+    if (!this.ctx) return;
+    if (game.mode === "over") this.stop();
+    else this.play(game.mode === "title" ? "title" : "main");
+  },
+
+  tick() {
+    if (!this.ctx || !this.song) return;
+    const horizon = this.ctx.currentTime + 0.2;
+    let guard = 0;
+    while (this.nextTime < horizon && guard++ < 64) {
+      this.scheduleStep(this.step, this.nextTime);
+      this.nextTime += this.stepDur;
+      this.step = (this.step + 1) % this.song.steps;
+    }
+    if (this.nextTime < this.ctx.currentTime) this.nextTime = this.ctx.currentTime + 0.02;
+  },
+
+  scheduleStep(step, time) {
+    const s = this.song, d = this.stepDur;
+    const lead = s.tracks.p1[step];
+    if (lead) this.voice(this.waves.lead, lead.freq, time, Math.min(lead.steps, 8) * d * 0.92, 0.20);
+    const comp = s.tracks.p2[step];
+    if (comp) this.voice(this.waves.comp, comp.freq, time, Math.min(comp.steps, 4) * d * 0.7, 0.085);
+    const bass = s.tracks.tri[step];
+    if (bass) this.voice(null, bass.freq, time, Math.min(bass.steps, 4) * d * 0.95, 0.34);
+    const hit = s.tracks.dr[step];
+    if (hit) this.drum({ k: "kick", s: "snare", h: "hat" }[hit.tok] || "hat", time - this.ctx.currentTime, 1);
+  },
+
+  // wave === null plays the triangle (bass) channel.
+  voice(wave, freq, time, dur, vol) {
+    const osc = this.ctx.createOscillator();
+    if (wave) osc.setPeriodicWave(wave); else osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, time);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(vol, time + 0.008);
+    g.gain.linearRampToValueAtTime(vol * 0.72, time + dur * 0.55);
+    g.gain.linearRampToValueAtTime(0, time + dur);
+    osc.connect(g).connect(this.bus);
+    osc.start(time);
+    osc.stop(time + dur + 0.02);
+  },
+
+  drum(kind, when = 0, amp = 1) {
+    if (!this.ctx || !this.bus) return;
+    const t = this.ctx.currentTime + Math.max(0, when);
+    if (kind === "kick") {
+      const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(180, t);
+      osc.frequency.exponentialRampToValueAtTime(44, t + 0.11);
+      g.gain.setValueAtTime(0.42 * amp, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      osc.connect(g).connect(this.bus);
+      osc.start(t); osc.stop(t + 0.16);
+      return;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const filt = this.ctx.createBiquadFilter();
+    const g = this.ctx.createGain();
+    const snare = kind === "snare";
+    filt.type = snare ? "bandpass" : "highpass";
+    filt.frequency.value = snare ? 1700 : 7200;
+    filt.Q.value = snare ? 0.9 : 0.7;
+    const peak = (snare ? 0.30 : 0.12) * amp;
+    const dur = snare ? 0.13 : 0.045;
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(filt).connect(g).connect(this.bus);
+    src.start(t); src.stop(t + dur + 0.02);
+  },
 };
 
 const muteBtn = document.getElementById("mute");
 muteBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   Sound.on = !Sound.on;
+  Music.setMuted(!Sound.on);
   muteBtn.textContent = Sound.on ? "🔊" : "🔇";
+});
+
+// Silence the chip while the tab is in the background.
+document.addEventListener("visibilitychange", () => {
+  if (!Sound.ctx) return;
+  if (document.hidden) Sound.ctx.suspend();
+  else if (Sound.on) Sound.ctx.resume();
 });
 
 /* ------------------------------ lanes ----------------------------- */
@@ -246,6 +464,8 @@ function startGame() {
   particles = [];
   popups = [];
   resetPlayer();
+  Music.play("main");
+  Music.setLevel(1);
 }
 
 function nextLevel() {
@@ -256,6 +476,7 @@ function nextLevel() {
   game.safeFor = SAFE_TIME;
   resetPlayer();
   game.mode = "play";
+  Music.setLevel(game.level);
 }
 
 /* ------------------------------ input ----------------------------- */
@@ -418,6 +639,7 @@ function loseLife(kind) {
 
   if (game.lives <= 0) {
     game.mode = "over";
+    Music.stop();
     Sound.over();
   } else {
     game.mode = "dead";

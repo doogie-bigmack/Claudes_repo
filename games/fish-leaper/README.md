@@ -44,6 +44,34 @@ at the bottom. Rest there as long as you like.
 - Cheerful sounds you can turn off with the 🔊 button, big chunky art, and
   encouraging messages ("Yay!", "Woohoo!") every time you land a cave.
 
+## Soundtrack
+
+The music is a little NES sound chip built out of WebAudio — no audio files are
+shipped, every note is generated as you play:
+
+| Channel | Voice | Job |
+| --- | --- | --- |
+| Pulse 1 | 25% duty square | lead melody |
+| Pulse 2 | 12.5% duty square | chord arpeggios |
+| Triangle | triangle wave | bass line |
+| Noise | filtered white noise | kick, snare, hats |
+
+Two themes, both in C major over a **C - Am - F - G** progression: a calmer
+4-bar tune on the title screen, and an 8-bar gameplay loop at 152 BPM with a
+drum fill on the turnaround. The tempo climbs 5 BPM per level (capped at 184),
+so the ocean feels busier as you get further without the music changing key.
+
+Patterns live in the `SONGS` object as 16 steps per bar, where `.` means
+"nothing on this step" — so a bar of melody is just a readable string:
+
+```
+"G4 . A4 . C5 . . . C5 . A4 . G4 . . ."
+```
+
+A look-ahead scheduler queues notes against the audio clock, so timing stays
+tight even when the frame rate wobbles. The 🔊 button mutes music and effects
+together, and the chip goes quiet when the tab is in the background.
+
 ## Scoring
 
 | Action | Points |
